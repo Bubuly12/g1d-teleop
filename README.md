@@ -1,10 +1,6 @@
-
-
-Initialize the third-party submodules:
-
 # XRoboToolkit Robot Teleoperation Project
 
-This is my personal robot teleoperation project. The current main goal is to avoid the Vuer web page and directly use the XRoboToolkit SDK to obtain PICO headset, controller, and hand data, then drive the robot arms, Dex1 gripper, AGV base, and lift.
+The current main goal is to avoid the Vuer web page and directly use the XRoboToolkit SDK to obtain PICO headset, controller, and hand data, then drive the robot arms, Dex1 gripper, AGV base, and lift.
 
 The current workflow supports:
 
@@ -211,18 +207,6 @@ Before enabling teleoperation, make sure the area around the robot is safe and t
 - The current image processing reduces distortion from direct stretching, but it is not a replacement for true stereo calibration and epipolar rectification.
 
 ## 7. Useful Test Scripts
-
-Inspect raw XRoboToolkit data:
-
-```bash
-python3 teleop/xrtk/inspect_xrtk_data.py
-```
-
-Inspect wrist pose and IK output:
-
-```bash
-python3 teleop/xrtk/inspect_xrtk_arm_pose_ik.py -n 100 -t 0.2
-```
 
 View IK motion in PyBullet:
 
