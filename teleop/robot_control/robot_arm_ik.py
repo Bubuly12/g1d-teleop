@@ -16,16 +16,16 @@ from teleop.utils.weighted_moving_filter import WeightedMovingFilter
 
 class G1_29_ArmIK:
     def __init__(self, Unit_Test = False, Visualization = False):
-        """G1 29 自由度模型的双臂 IK 求解器。
+        """Dual-arm IK solver for the G1 29-DoF model.
 
-        输入是左右手腕目标位姿 4x4 矩阵，输出是 14 个双臂关节角和对应的动力学前馈力矩。
+        Inputs are 4x4 target wrist poses for both arms; outputs are the 14 arm joint angles and the corresponding dynamics feedforward torques.
         """
         np.set_printoptions(precision=5, suppress=True, linewidth=200)
 
         self.Unit_Test = Unit_Test
         self.Visualization = Visualization
 
-        # Pinocchio 从 URDF 构建模型比较慢，缓存后下次可以直接反序列化加载。
+        # Building the Pinocchio model from URDF is slow, so cache it and reload it directly next time.
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         self.cache_path = os.path.join(repo_root, "teleop", "robot_control", "g1_29_model_cache.pkl")
 
@@ -36,7 +36,7 @@ class G1_29_ArmIK:
             self.urdf_path = os.path.join(repo_root, "assets", "g1", "g1_body29_hand14.urdf")
             self.model_dir = os.path.join(repo_root, "assets", "g1")
 
-        # 优先加载缓存；没有缓存时才从 URDF 创建完整机器人模型。
+        # Prefer the cached model; only rebuild the full robot model from URDF when the cache is missing.
         if os.path.exists(self.cache_path):
             logger_mp.info(f"[G1_29_ArmIK] >>> Loading cached robot model: {self.cache_path}")
             self.robot, self.reduced_robot = self.load_cache()
@@ -44,7 +44,7 @@ class G1_29_ArmIK:
             logger_mp.info("[G1_29_ArmIK] >>> Cache not found. Loading URDF (slow)...")
             self.robot = pin.RobotWrapper.BuildFromURDF(self.urdf_path, self.model_dir)
 
-            # IK 只求双臂，因此把腿、腰和手指关节锁住，减少优化变量数量。
+            # IK only solves the two arms, so lock legs, waist, and finger joints to reduce the number of optimization variables.
             self.mixed_jointsToLockIDs = [
                                             "left_hip_pitch_joint" ,
                                             "left_hip_roll_joint" ,
@@ -84,7 +84,7 @@ class G1_29_ArmIK:
                 reference_configuration=np.array([0.0] * self.robot.model.nq),
             )
 
-            # URDF 里的手腕关节不一定正好是工具中心点，这里在左右腕 yaw 后方添加虚拟末端执行器 frame。
+            # The URDF wrist joint is not always exactly at the tool center, so add virtual end-effector frames after the wrist yaw joints.
             self.reduced_robot.model.addFrame(
                 pin.Frame('L_ee',
                           self.reduced_robot.model.getJointId('left_wrist_yaw_joint'),
@@ -99,21 +99,21 @@ class G1_29_ArmIK:
                                   np.array([0.05,0,0]).T),
                           pin.FrameType.OP_FRAME)
             )
-            # reduced model 和虚拟末端 frame 都构建完成后再缓存。
+            # Cache only after the reduced model and virtual end-effector frames are fully built.
             self.save_cache()
             logger_mp.info(f"[G1_29_ArmIK]>>> Cache saved to {self.cache_path}")
 
-        # CasADi 版本的 Pinocchio 模型用于构造可微的正运动学误差函数。
+        # The CasADi Pinocchio model is used to build differentiable forward-kinematics error functions.
         self.cmodel = cpin.Model(self.reduced_robot.model)
         self.cdata = self.cmodel.createData()
 
-        # q 是待优化关节角；tf_l/tf_r 是外部传入的左右末端目标位姿。
+        # q is the optimized joint vector; tf_l/tf_r are the external target poses for the left and right end effectors.
         self.cq = casadi.SX.sym("q", self.reduced_robot.model.nq, 1) 
         self.cTf_l = casadi.SX.sym("tf_l", 4, 4)
         self.cTf_r = casadi.SX.sym("tf_r", 4, 4)
         cpin.framesForwardKinematics(self.cmodel, self.cdata, self.cq)
 
-        # 取左右末端 frame id，并把平移误差、旋转误差封装成 CasADi Function。
+        # Fetch left/right end-effector frame ids and wrap translation/rotation errors as CasADi Functions.
         self.L_hand_id = self.reduced_robot.model.getFrameId("L_ee")
         self.R_hand_id = self.reduced_robot.model.getFrameId("R_ee")
 
@@ -138,7 +138,7 @@ class G1_29_ArmIK:
             ],
         )
 
-        # 优化变量是整条双臂的关节角；var_q_last 用来惩罚与上一帧相差过大，提升遥操作平滑度。
+        # The optimization variable is the dual-arm joint vector; var_q_last penalizes large jumps from the previous frame for smoother teleoperation.
         self.opti = casadi.Opti()
         self.var_q = self.opti.variable(self.reduced_robot.model.nq)
         self.var_q_last = self.opti.parameter(self.reduced_robot.model.nq)   # for smooth
@@ -149,14 +149,14 @@ class G1_29_ArmIK:
         self.regularization_cost = casadi.sumsqr(self.var_q)
         self.smooth_cost = casadi.sumsqr(self.var_q - self.var_q_last)
 
-        # 关节角必须保持在 URDF 定义的上下限内。
+        # Joint positions must stay within the limits defined by the URDF.
         self.opti.subject_to(self.opti.bounded(
             self.reduced_robot.model.lowerPositionLimit,
             self.var_q,
             self.reduced_robot.model.upperPositionLimit)
         )
-        # 平移权重大于旋转：遥操作中手的位置通常比姿态更影响可用性。
-        # regularization 防止姿态漂到过大角度，smooth_cost 防止相邻帧抖动。
+        # Translation is weighted more than rotation because hand position usually matters more for teleoperation usability.
+        # Regularization prevents excessive posture drift, and smooth_cost suppresses frame-to-frame jitter.
         self.opti.minimize(50 * self.translational_cost + self.rotation_cost + 0.02 * self.regularization_cost + 0.1 * self.smooth_cost)
 
         opts = {
@@ -179,20 +179,20 @@ class G1_29_ArmIK:
         }
         self.opti.solver("ipopt", opts)
 
-        # init_data 既是求解初值，也是下一帧平滑项的参考。
+        # init_data is both the solver initial guess and the reference for the next frame's smoothness term.
         self.init_data = np.zeros(self.reduced_robot.model.nq)
         self.smooth_filter = WeightedMovingFilter(np.array([0.4, 0.3, 0.2, 0.1]), 14)
         self.vis = None
 
         if self.Visualization:
-            # Meshcat 可视化真实末端 frame 和目标末端 frame，主要用于调试 IK 是否跟踪正确。
+            # Meshcat visualizes the actual and target end-effector frames, mainly for debugging IK tracking.
             self.vis = MeshcatVisualizer(self.reduced_robot.model, self.reduced_robot.collision_model, self.reduced_robot.visual_model)
             self.vis.initViewer(open=True) 
             self.vis.loadViewerModel("pinocchio") 
             self.vis.displayFrames(True, frame_ids=[107, 108], axis_length = 0.15, axis_width = 5)
             self.vis.display(pin.neutral(self.reduced_robot.model))
 
-            # 目标 frame 用彩色三轴线段显示，方便和机器人当前末端位姿对比。
+            # Target frames are shown as colored XYZ axes so they can be compared with the robot end-effector poses.
             frame_viz_names = ['L_ee_target', 'R_ee_target']
             FRAME_AXIS_POSITIONS = (
                 np.array([[0, 0, 0], [1, 0, 0],
@@ -221,7 +221,7 @@ class G1_29_ArmIK:
                 )
 
     def save_cache(self):
-        """保存完整模型和 reduced 模型，避免下次启动重复解析 URDF。"""
+        """Save the full and reduced models to avoid parsing the URDF again on the next startup."""
         data = {
             "robot_model": self.robot.model,
             "reduced_model": self.reduced_robot.model,
@@ -231,7 +231,7 @@ class G1_29_ArmIK:
             pickle.dump(data, f)
 
     def load_cache(self):
-        """从 pickle 里恢复 Pinocchio 模型，并重新创建运行时 data。"""
+        """Restore Pinocchio models from pickle and recreate runtime data objects."""
         with open(self.cache_path, "rb") as f:
             data = pickle.load(f)
 
@@ -246,7 +246,7 @@ class G1_29_ArmIK:
         return robot, reduced_robot
     
     def scale_arms(self, human_left_pose, human_right_pose, human_arm_length=0.60, robot_arm_length=0.75):
-        """按人臂/机器人臂长比例缩放目标位置，适配两者臂长不同的情况。"""
+        """Scale target positions by the human/robot arm-length ratio to account for different arm lengths."""
         scale_factor = robot_arm_length / human_arm_length
         robot_left_pose = human_left_pose.copy()
         robot_right_pose = human_right_pose.copy()
@@ -255,16 +255,16 @@ class G1_29_ArmIK:
         return robot_left_pose, robot_right_pose
 
     def solve_ik(self, left_wrist, right_wrist, current_lr_arm_motor_q = None, current_lr_arm_motor_dq = None):
-        """求解左右手腕目标位姿对应的双臂关节角。
+        """Solve dual-arm joint angles for the left and right wrist target poses.
 
-        left_wrist/right_wrist: 4x4 齐次变换矩阵。
-        current_lr_arm_motor_q: 当前关节角，可作为优化初值，提高连续帧求解稳定性。
+        left_wrist/right_wrist: 4x4 homogeneous transformation matrices.
+        Dual-arm IK solver detail.
         """
         if current_lr_arm_motor_q is not None:
             self.init_data = current_lr_arm_motor_q
         self.opti.set_initial(self.var_q, self.init_data)
 
-        # 如需要把人手空间缩放到机器人臂长，可打开下面这行。
+        # Dual-arm IK solver detail.
         # left_wrist, right_wrist = self.scale_arms(left_wrist, right_wrist)
         if self.Visualization:
             self.vis.viewer['L_ee_target'].set_transform(left_wrist)   # for visualization
@@ -279,11 +279,11 @@ class G1_29_ArmIK:
             # sol = self.opti.solve_limited()
 
             sol_q = self.opti.value(self.var_q)
-            # 优化结果再过一层加权滑动平均，减少 IK 数值抖动传到电机。
+            # Dual-arm IK solver detail.
             self.smooth_filter.add_data(sol_q)
             sol_q = self.smooth_filter.filtered_data
 
-            # 当前实现把速度置零，只计算静态重力/惯性项下的 rnea 力矩。
+            # Dual-arm IK solver detail.
             if current_lr_arm_motor_dq is not None:
                 v = current_lr_arm_motor_dq * 0.0
             else:
@@ -291,7 +291,7 @@ class G1_29_ArmIK:
 
             self.init_data = sol_q
 
-            # rnea 根据 q、v、a 计算逆动力学力矩，这里 a=0。
+            # Dual-arm IK solver detail.
             sol_tauff = pin.rnea(self.reduced_robot.model, self.reduced_robot.data, sol_q, v, np.zeros(self.reduced_robot.model.nv))
 
             if self.Visualization:
@@ -302,7 +302,7 @@ class G1_29_ArmIK:
         except Exception as e:
             logger_mp.error(f"ERROR in convergence, plotting debug info.{e}")
 
-            # 求解失败时取 CasADi debug 中最后一次迭代值，便于定位目标位姿或关节限位问题。
+            # Dual-arm IK solver detail.
             sol_q = self.opti.debug.value(self.var_q)
             self.smooth_filter.add_data(sol_q)
             sol_q = self.smooth_filter.filtered_data
@@ -320,12 +320,12 @@ class G1_29_ArmIK:
             if self.Visualization:
                 self.vis.display(sol_q)  # for visualization
 
-            # 实机安全优先：失败时保持当前关节角，力矩置零，避免把异常解发送给机械臂。
+            # Dual-arm IK solver detail.
             # return sol_q, sol_tauff
             return current_lr_arm_motor_q, np.zeros(self.reduced_robot.model.nv)
     def matrix_to_xyzrpy(self, T):
         """
-        将 4x4 齐次变换矩阵转换为 [x, y, z, roll, pitch, yaw]。
+        Dual-arm IK solver detail.
         """
         assert T.shape == (4, 4)
         xyz = T[:3, 3]
@@ -333,17 +333,17 @@ class G1_29_ArmIK:
         return np.concatenate([xyz, rpy])
     
     def solve_fk(self, q_full):
-        """根据双臂关节角计算左右末端的正运动学位姿。"""
+        """Dual-arm IK solver detail."""
         assert q_full.shape == (self.reduced_robot.model.nq,), f"Expected shape ({self.reduced_robot.model.nq},), got {q_full.shape}"
         
         try:
             pin.forwardKinematics(self.reduced_robot.model, self.reduced_robot.data, q_full)
             
-            # 使用 __init__ 里缓存的 frame id，避免每帧通过名字查找。
+            # Dual-arm IK solver detail.
             L_ee_id = self.L_hand_id
             R_ee_id = self.R_hand_id
             
-            # 单独更新末端 frame 位姿；返回值是内部数据引用，所以立刻 copy 成独立矩阵。
+            # Dual-arm IK solver detail.
             ee_pose_l_se3 = pin.updateFramePlacement(self.reduced_robot.model, self.reduced_robot.data, L_ee_id)
             ee_pose_r_se3 = pin.updateFramePlacement(self.reduced_robot.model, self.reduced_robot.data, R_ee_id)
             

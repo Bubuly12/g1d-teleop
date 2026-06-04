@@ -34,25 +34,25 @@ class Dex3_1_Controller:
     def __init__(self, left_hand_array_in, right_hand_array_in, dual_hand_data_lock = None, dual_hand_state_array_out = None,
                        dual_hand_action_array_out = None, fps = 100.0, Unit_Test = False, simulation_mode = False):
         """
-        Unitree Dex3-1 灵巧手控制器。
+        Unitree Dex3-1 dexterous hand controller.
 
-        [注意] *_array 参数必须是 multiprocessing.Array，因为控制循环会在子进程中运行。
+        [Note] *_array arguments must be multiprocessing.Array because the control loop runs in a child process.
 
-        left_hand_array_in: [输入] XR 左手 25 个骨架点，shape 展开为 75。
+        left_hand_array_in: [input] 25 XR left-hand skeleton points flattened to shape 75.
 
-        right_hand_array_in: [输入] XR 右手 25 个骨架点，shape 展开为 75。
+        right_hand_array_in: [input] 25 XR right-hand skeleton points flattened to shape 75.
 
-        dual_hand_data_lock: 同步状态输出和动作输出的锁。
+        dual_hand_data_lock: lock used to synchronize state and action outputs.
 
-        dual_hand_state_array_out: [输出] 左 7 + 右 7 个手部电机当前位置。
+        dual_hand_state_array_out: [output] current hand motor positions, left 7 + right 7.
 
-        dual_hand_action_array_out: [输出] 左 7 + 右 7 个手部目标动作。
+        dual_hand_action_array_out: [output] target hand actions, left 7 + right 7.
 
-        fps: 控制频率。
+        fps: control frequency.
 
-        Unit_Test: 是否使用单元测试相对路径。
+        Unit_Test: whether to use unit-test relative paths.
 
-        simulation_mode: 是否使用仿真 DDS Domain。
+        simulation_mode: whether to use the simulation DDS domain.
         """
         logger_mp.info("Initialize Dex3_1_Controller...")
 
@@ -71,7 +71,7 @@ class Dex3_1_Controller:
         else:
             ChannelFactoryInitialize(0)
 
-        # 左右手分别有独立的命令 topic 和状态 topic。
+        # The left and right hands use separate command and state topics.
         self.LeftHandCmb_publisher = ChannelPublisher(kTopicDex3LeftCommand, HandCmd_)
         self.LeftHandCmb_publisher.Init()
         self.RightHandCmb_publisher = ChannelPublisher(kTopicDex3RightCommand, HandCmd_)
@@ -82,11 +82,11 @@ class Dex3_1_Controller:
         self.RightHandState_subscriber = ChannelSubscriber(kTopicDex3RightState, HandState_)
         self.RightHandState_subscriber.Init()
 
-        # 订阅线程写入当前手部电机角度，控制子进程读取并可转发给数据记录模块。
+        # The subscription thread writes current hand motor angles; the control child process reads them and may forward them to data logging.
         self.left_hand_state_array  = Array('d', Dex3_Num_Motors, lock=True)  
         self.right_hand_state_array = Array('d', Dex3_Num_Motors, lock=True)
 
-        # 状态订阅用线程即可，控制计算和发布放到子进程里。
+        # A thread is enough for state subscription; control computation and publishing run in a child process.
         self.subscribe_state_thread = threading.Thread(target=self._subscribe_hand_state)
         self.subscribe_state_thread.daemon = True
         self.subscribe_state_thread.start()
@@ -106,7 +106,7 @@ class Dex3_1_Controller:
         logger_mp.info("Initialize Dex3_1_Controller OK!")
 
     def _subscribe_hand_state(self):
-        """持续订阅左右 Dex3 手状态，并按硬件关节枚举顺序缓存。"""
+        """Continuously subscribe to left/right Dex3 hand states and cache them in hardware joint enum order."""
         while True:
             left_hand_msg  = self.LeftHandState_subscriber.Read()
             right_hand_msg = self.RightHandState_subscriber.Read()
@@ -120,7 +120,7 @@ class Dex3_1_Controller:
             time.sleep(0.002)
     
     class _RIS_Mode:
-        """Dex3 电机 mode 字节的打包工具。"""
+        """Helper for packing the Dex3 motor mode byte."""
         def __init__(self, id=0, status=0x01, timeout=0):
             self.motor_mode = 0
             self.id = id & 0x0F  # 4 bits for id
@@ -134,7 +134,7 @@ class Dex3_1_Controller:
             return self.motor_mode
 
     def ctrl_dual_hand(self, left_q_target, right_q_target):
-        """把左右手目标关节角写入 DDS 命令并发布。"""
+        """Write left/right target hand joint angles into DDS commands and publish them."""
         for idx, id in enumerate(Dex3_1_Left_JointIndex):
             self.left_msg.motor_cmd[id].q = left_q_target[idx]
         for idx, id in enumerate(Dex3_1_Right_JointIndex):
@@ -146,7 +146,7 @@ class Dex3_1_Controller:
     
     def control_process(self, left_hand_array_in, right_hand_array_in, left_hand_state_array, right_hand_state_array,
                               dual_hand_data_lock = None, dual_hand_state_array_out = None, dual_hand_action_array_out = None):
-        """读取 XR 手部骨架，执行 retargeting，并以固定频率发布 Dex3 目标角。"""
+        """Read the XR hand skeleton, run retargeting, and publish Dex3 target angles at a fixed rate."""
         self.running = True
 
         left_q_target  = np.full(Dex3_Num_Motors, 0)
@@ -158,7 +158,7 @@ class Dex3_1_Controller:
         kp = 1.5
         kd = 0.2
 
-        # 初始化左手命令，每个关节设置同样的 kp/kd 和 RIS mode。
+        # Initialize the left-hand command; each joint uses the same kp/kd and RIS mode.
         self.left_msg  = unitree_hg_msg_dds__HandCmd_()
         for id in Dex3_1_Left_JointIndex:
             ris_mode = self._RIS_Mode(id = id, status = 0x01)
@@ -170,7 +170,7 @@ class Dex3_1_Controller:
             self.left_msg.motor_cmd[id].kp   = kp
             self.left_msg.motor_cmd[id].kd   = kd
 
-        # 初始化右手命令。
+        # Initialize the right-hand command.
         self.right_msg = unitree_hg_msg_dds__HandCmd_()
         for id in Dex3_1_Right_JointIndex:
             ris_mode = self._RIS_Mode(id = id, status = 0x01)
@@ -185,29 +185,29 @@ class Dex3_1_Controller:
         try:
             while self.running:
                 start_time = time.time()
-                # 从共享内存取出 XR 25 点手部骨架，恢复为 (25, 3)。
+                # Read the 25-point XR hand skeleton from shared memory and reshape it to (25, 3).
                 with left_hand_array_in.get_lock():
                     left_hand_data  = np.array(left_hand_array_in[:]).reshape(25, 3).copy()
                 with right_hand_array_in.get_lock():
                     right_hand_data = np.array(right_hand_array_in[:]).reshape(25, 3).copy()
 
-                # 当前硬件状态用于数据记录，不参与 retargeting 求解。
+                # Current hardware state is used for data logging and is not part of retargeting.
                 state_data = np.concatenate((np.array(left_hand_state_array[:]), np.array(right_hand_state_array[:])))
 
                 if not np.all(right_hand_data == 0.0) and not np.all(left_hand_data[4] == np.array([-1.13, 0.3, 0.15])): # if hand data has been initialized.
-                    # retargeting 使用若干人手点对向量作为输入，而不是直接使用绝对坐标。
-                    # 例如 Dex3 YAML 中 [[9,14,14,0,0,0], [4,4,9,4,9,14]]
-                    # 会生成 6 条向量：human[4]-human[9], human[4]-human[14], ...
-                    # DexPilotOptimizer 再让机器人 thumb/index/middle 指尖之间、掌根到指尖的向量去匹配它们。
+                    # Retargeting uses vectors between selected human-hand point pairs instead of absolute coordinates.
+                    # For example, the Dex3 YAML contains [[9,14,14,0,0,0], [4,4,9,4,9,14]].
+                    # This generates 6 vectors: human[4]-human[9], human[4]-human[14], ...
+                    # DexPilotOptimizer then matches these with robot thumb/index/middle fingertip vectors and palm-to-fingertip vectors.
                     ref_left_value = left_hand_data[self.hand_retargeting.left_indices[1,:]] - left_hand_data[self.hand_retargeting.left_indices[0,:]]
                     ref_right_value = right_hand_data[self.hand_retargeting.right_indices[1,:]] - right_hand_data[self.hand_retargeting.right_indices[0,:]]
 
-                    # retarget() 返回 robot.dof_joint_names 顺序的关节角；
-                    # 后面的 left_dex_retargeting_to_hardware 会把它重排成 Dex3 DDS 消息顺序。
+                    # retarget() returns joint angles in robot.dof_joint_names order;
+                    # left_dex_retargeting_to_hardware later reorders them into Dex3 DDS message order.
                     left_q_target  = self.hand_retargeting.left_retargeting.retarget(ref_left_value)[self.hand_retargeting.left_dex_retargeting_to_hardware]
                     right_q_target = self.hand_retargeting.right_retargeting.retarget(ref_right_value)[self.hand_retargeting.right_dex_retargeting_to_hardware]
 
-                # action_data 是最终发送给硬件的目标角，也可用于采集训练数据。
+                # action_data contains the final target angles sent to hardware and can also be used for training-data collection.
                 action_data = np.concatenate((left_q_target, right_q_target))    
                 if dual_hand_state_array_out and dual_hand_action_array_out:
                     with dual_hand_data_lock:
@@ -223,7 +223,7 @@ class Dex3_1_Controller:
             logger_mp.info("Dex3_1_Controller has been closed.")
 
 class Dex3_1_Left_JointIndex(IntEnum):
-    """Dex3 左手硬件消息中的电机索引。"""
+    """Motor indices in Dex3 left-hand hardware messages."""
     kLeftHandThumb0 = 0
     kLeftHandThumb1 = 1
     kLeftHandThumb2 = 2
@@ -233,7 +233,7 @@ class Dex3_1_Left_JointIndex(IntEnum):
     kLeftHandIndex1 = 6
 
 class Dex3_1_Right_JointIndex(IntEnum):
-    """Dex3 右手硬件消息中的电机索引。"""
+    """Motor indices in Dex3 right-hand hardware messages."""
     kRightHandThumb0 = 0
     kRightHandThumb1 = 1
     kRightHandThumb2 = 2
@@ -252,9 +252,9 @@ class Dex1_1_Gripper_Controller:
     def __init__(self, left_gripper_value_in, right_gripper_value_in, dual_gripper_data_lock = None, dual_gripper_state_out = None, dual_gripper_action_out = None, 
                        filter = True, fps = 200.0, Unit_Test = False, simulation_mode = False):
         """
-        Dex1-1 夹爪控制器，把 XR trigger/pinch 值映射成左右夹爪开合位置。
+        Dex1-1 gripper controller that maps XR trigger/pinch values to left/right gripper open-close positions.
 
-        [注意] *_array 参数需要 multiprocessing 类型，方便线程/进程间共享。
+        [Note] *_array arguments should be multiprocessing types so they can be shared across threads/processes.
 
         left_gripper_value_in: [input] Left ctrl data (required from XR device) to control_thread
 
@@ -281,7 +281,7 @@ class Dex1_1_Gripper_Controller:
         self.simulation_mode = simulation_mode
         
         if filter and not self.simulation_mode:
-            # 实机上夹爪命令做简单平滑，减少小幅输入抖动。
+            # On real hardware, smooth gripper commands to reduce small input jitter.
             self.smooth_filter = WeightedMovingFilter(np.array([0.5, 0.3, 0.2]), 2)
         else:
             self.smooth_filter = None
@@ -291,7 +291,7 @@ class Dex1_1_Gripper_Controller:
         else:
             ChannelFactoryInitialize(0)
  
-        # 左右夹爪各自一组命令/状态 topic。
+        # Each gripper has its own command/state topic pair.
         self.LeftGripperCmb_publisher = ChannelPublisher(kTopicGripperLeftCommand, MotorCmds_)
         self.LeftGripperCmb_publisher.Init()
         self.RightGripperCmb_publisher = ChannelPublisher(kTopicGripperRightCommand, MotorCmds_)
@@ -302,11 +302,11 @@ class Dex1_1_Gripper_Controller:
         self.RightGripperState_subscriber = ChannelSubscriber(kTopicGripperRightState, MotorStates_)
         self.RightGripperState_subscriber.Init()
 
-        # 夹爪只有一个电机，所以用 Value 缓存左右当前 q。
+        # Each gripper has only one motor, so Value is used to cache the current q for each side.
         self.left_gripper_state_value = Value('d', 0.0, lock=True)
         self.right_gripper_state_value = Value('d', 0.0, lock=True)
 
-        # 状态订阅线程持续刷新夹爪当前位置。
+        # The state subscription thread continuously refreshes current gripper positions.
         self.subscribe_state_thread = threading.Thread(target=self._subscribe_gripper_state)
         self.subscribe_state_thread.daemon = True
         self.subscribe_state_thread.start()
@@ -324,7 +324,7 @@ class Dex1_1_Gripper_Controller:
         logger_mp.info("Initialize Dex1_1_Gripper_Controller OK!")
 
     def _subscribe_gripper_state(self):
-        """订阅左右夹爪当前电机位置。"""
+        """Subscribe to current motor positions for both grippers."""
         while True:
             left_gripper_msg  = self.LeftGripperState_subscriber.Read()
             right_gripper_msg  = self.RightGripperState_subscriber.Read()
@@ -335,7 +335,7 @@ class Dex1_1_Gripper_Controller:
             time.sleep(0.002)
     
     def ctrl_dual_gripper(self, dual_gripper_action):
-        """发布左右夹爪目标位置。"""
+        """Publish target positions for both grippers."""
         self.left_gripper_msg.cmds[0].q  = dual_gripper_action[0]
         self.right_gripper_msg.cmds[0].q = dual_gripper_action[1]
 
@@ -345,14 +345,14 @@ class Dex1_1_Gripper_Controller:
     
     def control_thread(self, left_gripper_value_in, right_gripper_value_in, left_gripper_state_value, right_gripper_state_value, dual_hand_data_lock = None, 
                              dual_gripper_state_out = None, dual_gripper_action_out = None):
-        """把 XR 输入值线性映射到夹爪电机位置，并做限速/平滑。"""
+        """Linearly map XR input values to gripper motor positions, with rate limiting and smoothing."""
         self.running = True
-        DELTA_GRIPPER_CMD = 0.35     # 单周期最大变化量，约等于夹爪滑块 3mm，避免实机突跳。
+        DELTA_GRIPPER_CMD = 0.35     # Maximum change per cycle, roughly 3 mm of gripper slider motion, to avoid sudden jumps on hardware.
         THUMB_INDEX_DISTANCE_MIN = 5.0
         THUMB_INDEX_DISTANCE_MAX = 7.0
-        LEFT_MAPPED_MIN  = 0.0           # 夹爪闭合时的初始最小电机位置。
-        RIGHT_MAPPED_MIN = 0.0           # 夹爪闭合时的初始最小电机位置。
-        # 未标定前按导轨行程估算最大开合位置：0.6 cm/rad * 9 rad = 5.4 cm。
+        LEFT_MAPPED_MIN  = 0.0           # Initial minimum motor position when the gripper is closed.
+        RIGHT_MAPPED_MIN = 0.0           # Initial minimum motor position when the gripper is closed.
+        # Before calibration, estimate the maximum opening from rail travel: 0.6 cm/rad * 9 rad = 5.4 cm.
         LEFT_MAPPED_MAX = LEFT_MAPPED_MIN + 5.40 
         RIGHT_MAPPED_MAX = RIGHT_MAPPED_MIN + 5.40
         left_target_action  = (LEFT_MAPPED_MAX - LEFT_MAPPED_MIN) / 2.0
@@ -362,7 +362,7 @@ class Dex1_1_Gripper_Controller:
         tau = 0.0
         kp = 5.00
         kd = 0.05
-        # 初始化夹爪命令消息，左右各一个 MotorCmd。
+        # Initialize gripper command messages, one MotorCmd per side.
         self.left_gripper_msg  = MotorCmds_()
         self.left_gripper_msg.cmds = [unitree_go_msg_dds__MotorCmd_()]
         self.right_gripper_msg = MotorCmds_()
@@ -380,19 +380,19 @@ class Dex1_1_Gripper_Controller:
         try:
             while self.running:
                 start_time = time.time()
-                # 从 XR 输入读取左右夹爪控制量，可以来自手势 pinch 或手柄 trigger。
+                # Read left/right gripper control values from XR input, either hand pinch or controller trigger.
                 with left_gripper_value_in.get_lock():
                     left_gripper_value  = left_gripper_value_in.value
                 with right_gripper_value_in.get_lock():
                     right_gripper_value = right_gripper_value_in.value
-                # 当前电机位置用于限速裁剪。
+                # Current motor positions are used for rate-limit clipping.
                 dual_gripper_state = np.array([left_gripper_state_value.value, right_gripper_state_value.value])
                 
                 if left_gripper_value != 0.0 or right_gripper_value != 0.0: # if input data has been initialized.
-                    # 把输入距离/trigger 值线性映射到夹爪电机位置范围。
+                    # Linearly map input distance/trigger values to the gripper motor position range.
                     left_target_action  = np.interp(left_gripper_value, [THUMB_INDEX_DISTANCE_MIN, THUMB_INDEX_DISTANCE_MAX], [LEFT_MAPPED_MIN, LEFT_MAPPED_MAX])
                     right_target_action = np.interp(right_gripper_value, [THUMB_INDEX_DISTANCE_MIN, THUMB_INDEX_DISTANCE_MAX], [RIGHT_MAPPED_MIN, RIGHT_MAPPED_MAX])
-                # 实机限速；仿真里直接发送目标。
+                # Rate-limit on real hardware; send targets directly in simulation.
                 if not self.simulation_mode:
                     left_actual_action  = np.clip(left_target_action,  dual_gripper_state[0] - DELTA_GRIPPER_CMD, dual_gripper_state[0] + DELTA_GRIPPER_CMD) 
                     right_actual_action = np.clip(right_target_action, dual_gripper_state[1] - DELTA_GRIPPER_CMD, dual_gripper_state[1] + DELTA_GRIPPER_CMD)
@@ -419,7 +419,7 @@ class Dex1_1_Gripper_Controller:
             logger_mp.info("Dex1_1_Gripper_Controller has been closed.")
 
 class Gripper_JointIndex(IntEnum):
-    """Dex1 夹爪只有一个电机。"""
+    """Dex1 gripper has only one motor."""
     kGripper = 0
 
 

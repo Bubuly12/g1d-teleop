@@ -21,7 +21,7 @@ kTopicbraincoRightState = "rt/brainco/right/state"
 class Brainco_Controller_ctrl:
     def __init__(self, left_gripper_trigger_in, left_gripper_squeeze_in, right_gripper_trigger_in, right_gripper_squeeze_in, 
                        dual_hand_data_lock = None, dual_hand_state_array = None, dual_hand_action_array = None, fps = 100.0, Unit_Test = False, simulation_mode = False):
-        """BrainCo 手柄模式控制器：用 trigger/squeeze 直接映射六个手指电机。"""
+        """BrainCo controller mode: directly map trigger/squeeze inputs to the six finger motors."""
         logger_mp.info("Initialize Brainco_Controller_ctrl...")
         self.fps = fps
         self.hand_sub_ready = False
@@ -38,7 +38,7 @@ class Brainco_Controller_ctrl:
         else:
             ChannelFactoryInitialize(0)
 
-        # BrainCo 左右手使用独立命令/状态 topic。
+        # BrainCo left and right hands use separate command/state topics.
         self.LeftHandCmb_publisher = ChannelPublisher(kTopicbraincoLeftCommand, MotorCmds_)
         self.LeftHandCmb_publisher.Init()
         self.RightHandCmb_publisher = ChannelPublisher(kTopicbraincoRightCommand, MotorCmds_)
@@ -49,11 +49,11 @@ class Brainco_Controller_ctrl:
         self.RightHandState_subscriber = ChannelSubscriber(kTopicbraincoRightState, MotorStates_)
         self.RightHandState_subscriber.Init()
 
-        # 缓存左右手 6 个电机状态，供控制进程和数据记录读取。
+        # Cache the six motor states for each hand for the control process and data logging.
         self.left_hand_state_array  = Array('d', brainco_Num_Motors, lock=True)  
         self.right_hand_state_array = Array('d', brainco_Num_Motors, lock=True)
 
-        # 订阅线程持续刷新手部状态。
+        # The subscription thread continuously refreshes hand state.
         self.subscribe_state_thread = threading.Thread(target=self._subscribe_hand_state)
         self.subscribe_state_thread.daemon = True
         self.subscribe_state_thread.start()
@@ -71,7 +71,7 @@ class Brainco_Controller_ctrl:
         logger_mp.info("Initialize Brainco_Controller_ctrl OK!\n")
 
     def _subscribe_hand_state(self):
-        """订阅左右 BrainCo 手状态，并按官方电机顺序缓存。"""
+        """Subscribe to left/right BrainCo hand states and cache them in the official motor order."""
         while True:
             left_hand_msg  = self.LeftHandState_subscriber.Read()
             right_hand_msg = self.RightHandState_subscriber.Read()
@@ -87,7 +87,7 @@ class Brainco_Controller_ctrl:
 
     def ctrl_dual_hand(self, left_q_target, right_q_target):
         """
-        将左右手目标开合值写入 DDS 命令并发布。
+        Write left/right target open-close values into DDS commands and publish them.
         """
         for idx, id in enumerate(Brainco_Left_Hand_JointIndex):             
             self.left_hand_msg.cmds[id].q = left_q_target[idx]
@@ -100,13 +100,13 @@ class Brainco_Controller_ctrl:
     
     def control_process(self, left_gripper_trigger_in, left_gripper_squeeze_in, right_gripper_trigger_in, right_gripper_squeeze_in,
                               left_hand_state_array, right_hand_state_array, dual_hand_data_lock = None, dual_hand_state_array = None, dual_hand_action_array = None):
-        """读取控制器 trigger/squeeze 值，并映射到 BrainCo 六个手指。"""
+        """Read controller trigger/squeeze values and map them to the six BrainCo fingers."""
         self.running = True
 
         left_q_target  = np.full(brainco_Num_Motors, 0.0, dtype=float)
         right_q_target = np.full(brainco_Num_Motors, 0.0, dtype=float)
 
-        # 初始化左右手命令；dq=1.0 是该硬件接口的速度/执行相关参数。
+        # Initialize left/right hand commands; dq=1.0 is a speed/execution-related parameter for this hardware interface.
         self.left_hand_msg  = MotorCmds_()
         self.left_hand_msg.cmds = [unitree_go_msg_dds__MotorCmd_() for _ in range(len(Brainco_Left_Hand_JointIndex))]
         self.right_hand_msg = MotorCmds_()
@@ -122,8 +122,8 @@ class Brainco_Controller_ctrl:
         try:
             while self.running:
                 start_time = time.time()
-                # trigger 原始范围：[10.0, 0.0]，10 表示未按，0 表示按满。
-                # squeeze 原始范围：[0.0, 1.0]，0 表示未按，1 表示按满。
+                # Raw trigger range: [10.0, 0.0], where 10 means released and 0 means fully pressed.
+                # Raw squeeze range: [0.0, 1.0], where 0 means released and 1 means fully pressed.
                 with left_gripper_trigger_in.get_lock():
                     left_trigger_value = left_gripper_trigger_in.value
                 with left_gripper_squeeze_in.get_lock():
@@ -135,8 +135,8 @@ class Brainco_Controller_ctrl:
 
                 state_data = np.concatenate((np.array(left_hand_state_array[:]), np.array(right_hand_state_array[:])))
 
-                # BrainCo 官方接口范围为 [0,1]：0 全开，1 全闭。
-                # trigger 控制拇指/中指/无名指/小指，squeeze 单独控制食指。
+                # The official BrainCo interface range is [0,1]: 0 fully open, 1 fully closed.
+                # Trigger controls thumb/middle/ring/pinky, while squeeze controls the index finger separately.
                 left_triger_value = (10.0 - left_trigger_value) / 10.0
                 left_q_target[0]  = np.clip((left_triger_value - 0.5) / 0.5, 0.0, 0.98) # thumb-aux
                 left_q_target[1]  = np.clip(left_triger_value / 0.5, 0.0, 0.7) # thumb
@@ -153,7 +153,7 @@ class Brainco_Controller_ctrl:
                 right_q_target[4] = np.clip(right_triger_value, 0.0, 0.98)  # ring
                 right_q_target[5] = np.clip(right_triger_value, 0.0, 0.98)  # pinky
 
-                # 输出当前状态和最终动作，便于数据采集。
+                # Output current state and final action for data collection.
                 action_data = np.concatenate((left_q_target, right_q_target))
                 if dual_hand_state_array and dual_hand_action_array:
                     with dual_hand_data_lock:
@@ -172,7 +172,7 @@ class Brainco_Controller_ctrl:
 class Brainco_Controller_hand:
     def __init__(self, left_hand_array, right_hand_array, dual_hand_data_lock = None, dual_hand_state_array = None,
                        dual_hand_action_array = None, fps = 100.0, Unit_Test = False, simulation_mode = False):
-        """BrainCo 手势模式控制器：XR 手部骨架 -> retargeting -> BrainCo 电机命令。"""
+        """BrainCo hand-tracking mode: XR hand skeleton -> retargeting -> BrainCo motor commands."""
         logger_mp.info("Initialize Brainco_Controller_hand...")
         self.fps = fps
         self.hand_sub_ready = False
@@ -189,7 +189,7 @@ class Brainco_Controller_hand:
         else:
             ChannelFactoryInitialize(0)
 
-        # 左右手分别发布和订阅。
+        # Publish and subscribe separately for each hand.
         self.LeftHandCmb_publisher = ChannelPublisher(kTopicbraincoLeftCommand, MotorCmds_)
         self.LeftHandCmb_publisher.Init()
         self.RightHandCmb_publisher = ChannelPublisher(kTopicbraincoRightCommand, MotorCmds_)
@@ -200,11 +200,11 @@ class Brainco_Controller_hand:
         self.RightHandState_subscriber = ChannelSubscriber(kTopicbraincoRightState, MotorStates_)
         self.RightHandState_subscriber.Init()
 
-        # 缓存当前硬件状态。
+        # Cache current hardware state.
         self.left_hand_state_array  = Array('d', brainco_Num_Motors, lock=True)  
         self.right_hand_state_array = Array('d', brainco_Num_Motors, lock=True)
 
-        # 后台订阅线程。
+        # Background subscription thread.
         self.subscribe_state_thread = threading.Thread(target=self._subscribe_hand_state)
         self.subscribe_state_thread.daemon = True
         self.subscribe_state_thread.start()
@@ -222,7 +222,7 @@ class Brainco_Controller_hand:
         logger_mp.info("Initialize Brainco_Controller_hand OK!")
 
     def _subscribe_hand_state(self):
-        """订阅左右 BrainCo 手状态。"""
+        """Subscribe to left/right BrainCo hand states."""
         while True:
             left_hand_msg  = self.LeftHandState_subscriber.Read()
             right_hand_msg = self.RightHandState_subscriber.Read()
@@ -238,7 +238,7 @@ class Brainco_Controller_hand:
 
     def ctrl_dual_hand(self, left_q_target, right_q_target):
         """
-        发布左右手目标关节值。
+        Publish target joint values for both hands.
         """
         for idx, id in enumerate(Brainco_Left_Hand_JointIndex):             
             self.left_hand_msg.cmds[id].q = left_q_target[idx]
@@ -251,13 +251,13 @@ class Brainco_Controller_hand:
     
     def control_process(self, left_hand_array, right_hand_array, left_hand_state_array, right_hand_state_array,
                               dual_hand_data_lock = None, dual_hand_state_array = None, dual_hand_action_array = None):
-        """读取 XR 手部骨架，做 retargeting，并转换成 BrainCo 的 0~1 命令。"""
+        """Read XR hand skeletons, run retargeting, and convert the result to BrainCo 0~1 commands."""
         self.running = True
 
         left_q_target  = np.full(brainco_Num_Motors, 0.0, dtype=float)
         right_q_target = np.full(brainco_Num_Motors, 0.0, dtype=float)
 
-        # 初始化左右手命令消息。
+        # Initialize left/right hand command messages.
         self.left_hand_msg  = MotorCmds_()
         self.left_hand_msg.cmds = [unitree_go_msg_dds__MotorCmd_() for _ in range(len(Brainco_Left_Hand_JointIndex))]
         self.right_hand_msg = MotorCmds_()
@@ -273,28 +273,28 @@ class Brainco_Controller_hand:
         try:
             while self.running:
                 start_time = time.time()
-                # 读取 XR 手部 25 点坐标。
+                # Read the 25 XR hand landmark coordinates.
                 with left_hand_array.get_lock():
                     left_hand_data  = np.array(left_hand_array[:]).reshape(25, 3).copy()
                 with right_hand_array.get_lock():
                     right_hand_data = np.array(right_hand_array[:]).reshape(25, 3).copy()
 
-                # 当前硬件状态用于输出记录。
+                # Current hardware state is used for output logging.
                 state_data = np.concatenate((np.array(left_hand_state_array[:]), np.array(right_hand_state_array[:])))
 
                 if not np.all(right_hand_data == 0.0) and not np.all(left_hand_data[4] == np.array([-1.13, 0.3, 0.15])): # if hand data has been initialized.
-                    # retargeting 输入使用关键点对相对向量。
-                    # BrainCo YAML 是 5 指 DexPilot：优化器会让机器人五个指尖之间、
-                    # 以及掌根到指尖的向量匹配 XR 手部对应 landmark 向量。
+                    # Retargeting input uses relative vectors between landmark pairs.
+                    # The BrainCo YAML uses five-finger DexPilot: the optimizer matches vectors between the five robot fingertips,
+                    # as well as palm-to-fingertip vectors, to the corresponding XR hand landmark vectors.
                     ref_left_value = left_hand_data[self.hand_retargeting.left_indices[1,:]] - left_hand_data[self.hand_retargeting.left_indices[0,:]]
                     ref_right_value = right_hand_data[self.hand_retargeting.right_indices[1,:]] - right_hand_data[self.hand_retargeting.right_indices[0,:]]
 
-                    # retarget() 输出 URDF 关节角；索引表把它重排成 BrainCo 驱动 ID 顺序。
+                    # retarget() outputs URDF joint angles; the index table reorders them into BrainCo drive ID order.
                     left_q_target  = self.hand_retargeting.left_retargeting.retarget(ref_left_value)[self.hand_retargeting.left_dex_retargeting_to_hardware]
                     right_q_target = self.hand_retargeting.right_retargeting.retarget(ref_right_value)[self.hand_retargeting.right_dex_retargeting_to_hardware]
 
-                    # retargeting 输出是弧度，BrainCo 接口要 0~1：
-                    # 0.0 全开，1.0 全闭。不同手指的机械范围不同，所以逐项归一化。
+                    # Retargeting outputs radians, while the BrainCo interface expects 0~1:
+                    # 0.0 fully open, 1.0 fully closed. Each finger has a different mechanical range, so normalize per item.
                     def normalize(val, min_val, max_val):
                         return 1.0 - np.clip((max_val - val) / (max_val - min_val), 0.0, 1.0)
 
@@ -309,7 +309,7 @@ class Brainco_Controller_hand:
                             left_q_target[idx]  = normalize(left_q_target[idx], 0.0, 1.47)
                             right_q_target[idx] = normalize(right_q_target[idx], 0.0, 1.47)
 
-                # 输出最终动作，供数据采集或调试。
+                # Output final actions for data collection or debugging.
                 action_data = np.concatenate((left_q_target, right_q_target))    
                 if dual_hand_state_array and dual_hand_action_array:
                     with dual_hand_data_lock:
@@ -324,7 +324,7 @@ class Brainco_Controller_hand:
         finally:
             logger_mp.info("Brainco_Controller_hand has been closed.")
 
-# BrainCo 官方电机顺序如下。控制命令必须按这个顺序填入 cmds。
+# Official BrainCo motor order. Control commands must be written into cmds in this order.
 # according to the official documentation, https://www.brainco-hz.com/docs/revolimb-hand/product/parameters.html
 # the motor sequence is as shown in the table below
 # ┌──────┬───────┬────────────┬────────┬────────┬────────┬────────┐

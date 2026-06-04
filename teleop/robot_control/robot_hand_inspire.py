@@ -18,7 +18,7 @@ kTopicInspireDFXState = "rt/inspire/state"
 class Inspire_Controller_DFX:
     def __init__(self, left_hand_array, right_hand_array, dual_hand_data_lock = None, dual_hand_state_array = None,
                        dual_hand_action_array = None, fps = 100.0, Unit_Test = False, simulation_mode = False):
-        """Inspire DFX 灵巧手控制器：XR 手部骨架 -> retargeting -> DFX 电机命令。"""
+        """Inspire DFX dexterous hand controller: XR hand skeleton -> retargeting -> DFX motor commands."""
         logger_mp.info("Initialize Inspire_Controller_DFX...")
         self.fps = fps
         self.Unit_Test = Unit_Test
@@ -33,18 +33,18 @@ class Inspire_Controller_DFX:
         else:
             ChannelFactoryInitialize(0)
 
-        # DFX 左右手共用一个 MotorCmds_ topic，状态也从同一个 topic 读。
+        # DFX left and right hands share one MotorCmds_ topic, and state is read from one topic as well.
         self.HandCmb_publisher = ChannelPublisher(kTopicInspireDFXCommand, MotorCmds_)
         self.HandCmb_publisher.Init()
 
         self.HandState_subscriber = ChannelSubscriber(kTopicInspireDFXState, MotorStates_)
         self.HandState_subscriber.Init()
 
-        # 缓存左右手 6 个电机的归一化/实际状态，用于控制进程和数据记录。
+        # Cache normalized/actual states of the six motors per hand for the control process and data logging.
         self.left_hand_state_array  = Array('d', Inspire_Num_Motors, lock=True)  
         self.right_hand_state_array = Array('d', Inspire_Num_Motors, lock=True)
 
-        # 订阅线程持续刷新当前手部状态。
+        # The subscription thread continuously refreshes current hand state.
         self.subscribe_state_thread = threading.Thread(target=self._subscribe_hand_state)
         self.subscribe_state_thread.daemon = True
         self.subscribe_state_thread.start()
@@ -64,7 +64,7 @@ class Inspire_Controller_DFX:
         logger_mp.info("Initialize Inspire_Controller_DFX OK!")
 
     def _subscribe_hand_state(self):
-        """订阅 Inspire DFX 状态，并按官方电机顺序拆成左右手。"""
+        """Subscribe to Inspire DFX state and split it into left/right hands using the official motor order."""
         while True:
             hand_msg  = self.HandState_subscriber.Read()
             if hand_msg is not None:
@@ -76,7 +76,7 @@ class Inspire_Controller_DFX:
 
     def ctrl_dual_hand(self, left_q_target, right_q_target):
         """
-        将左右手目标值写入同一个 MotorCmds_ 消息并发布。
+        Write left/right target values into the same MotorCmds_ message and publish it.
         """
         for idx, id in enumerate(Inspire_Left_Hand_JointIndex):             
             self.hand_msg.cmds[id].q = left_q_target[idx]         
@@ -88,14 +88,14 @@ class Inspire_Controller_DFX:
     
     def control_process(self, left_hand_array, right_hand_array, left_hand_state_array, right_hand_state_array,
                               dual_hand_data_lock = None, dual_hand_state_array = None, dual_hand_action_array = None):
-        """固定频率读取 XR 手部骨架，计算 Inspire DFX 的 0~1 开合命令。"""
+        """Read XR hand skeletons at a fixed rate and compute Inspire DFX 0~1 open-close commands."""
         self.running = True
 
-        # Inspire 官方定义：1.0 接近张开，0.0 接近闭合，因此初值设为张开。
+        # Inspire convention: 1.0 is close to open and 0.0 is close to closed, so initialize to open.
         left_q_target  = np.full(Inspire_Num_Motors, 1.0)
         right_q_target = np.full(Inspire_Num_Motors, 1.0)
 
-        # 初始化左右手共 12 个电机命令。
+        # Initialize the 12 motor commands for both hands.
         self.hand_msg  = MotorCmds_()
         self.hand_msg.cmds = [unitree_go_msg_dds__MotorCmd_() for _ in range(len(Inspire_Right_Hand_JointIndex) + len(Inspire_Left_Hand_JointIndex))]
 
@@ -107,28 +107,28 @@ class Inspire_Controller_DFX:
         try:
             while self.running:
                 start_time = time.time()
-                # 从共享内存读取 XR 手部 25 点坐标。
+                # Read the 25 XR hand landmark coordinates from shared memory.
                 with left_hand_array.get_lock():
                     left_hand_data  = np.array(left_hand_array[:]).reshape(25, 3).copy()
                 with right_hand_array.get_lock():
                     right_hand_data = np.array(right_hand_array[:]).reshape(25, 3).copy()
 
-                # 当前硬件状态用于输出记录。
+                # Current hardware state is used for output logging.
                 state_data = np.concatenate((np.array(left_hand_state_array[:]), np.array(right_hand_state_array[:])))
 
                 if not np.all(right_hand_data == 0.0) and not np.all(left_hand_data[4] == np.array([-1.13, 0.3, 0.15])): # if hand data has been initialized.
-                    # retargeting 输入是人手关键点对构成的相对向量，减少全局手部位置影响。
-                    # Inspire YAML 使用 5 指 DexPilot，除了拇指/食指/中指/无名指/小指之间的向量，
-                    # 还包含掌根到各指尖的向量，用来保留整体手型。
+                    # Retargeting input is formed from relative vectors between human-hand landmark pairs, reducing the effect of global hand position.
+                    # The Inspire YAML uses five-finger DexPilot; besides vectors between thumb/index/middle/ring/pinky,
+                    # it also includes palm-to-fingertip vectors to preserve the overall hand shape.
                     ref_left_value = left_hand_data[self.hand_retargeting.left_indices[1,:]] - left_hand_data[self.hand_retargeting.left_indices[0,:]]
                     ref_right_value = right_hand_data[self.hand_retargeting.right_indices[1,:]] - right_hand_data[self.hand_retargeting.right_indices[0,:]]
 
-                    # retarget() 先求 URDF 关节角，再按 Inspire 官方电机顺序重排。
+                    # retarget() first solves URDF joint angles, then reorders them into the official Inspire motor order.
                     left_q_target  = self.hand_retargeting.left_retargeting.retarget(ref_left_value)[self.hand_retargeting.left_dex_retargeting_to_hardware]
                     right_q_target = self.hand_retargeting.right_retargeting.retarget(ref_right_value)[self.hand_retargeting.right_dex_retargeting_to_hardware]
 
-                    # retargeting 输出是弧度，而 DFX 硬件接口要 0~1：
-                    # 0.0 表示全闭，1.0 表示全开，所以用 (max - value) / range 做反向归一化。
+                    # Retargeting outputs radians, while the DFX hardware interface expects 0~1:
+                    # 0.0 means fully closed and 1.0 means fully open, so use (max - value) / range for inverse normalization.
                     def normalize(val, min_val, max_val):
                         return np.clip((max_val - val) / (max_val - min_val), 0.0, 1.0)
 
@@ -143,7 +143,7 @@ class Inspire_Controller_DFX:
                             left_q_target[idx]  = normalize(left_q_target[idx], -0.1, 1.3)
                             right_q_target[idx] = normalize(right_q_target[idx], -0.1, 1.3)
 
-                # action_data 保存最终发给硬件的 0~1 命令。
+                # action_data stores the final 0~1 command sent to hardware.
                 action_data = np.concatenate((left_q_target, right_q_target))    
                 if dual_hand_state_array and dual_hand_action_array:
                     with dual_hand_data_lock:
@@ -168,7 +168,7 @@ kTopicInspireFTPRightState = "rt/inspire_hand/state/r"
 class Inspire_Controller_FTP:
     def __init__(self, left_hand_array, right_hand_array, dual_hand_data_lock = None, dual_hand_state_array = None,
                        dual_hand_action_array = None, fps = 100.0, Unit_Test = False, simulation_mode = False):
-        """Inspire FTP 灵巧手控制器：接口使用 inspire_sdkpy，命令角度范围为 0~1000。"""
+        """Inspire FTP dexterous hand controller: uses inspire_sdkpy and sends angle commands in the 0~1000 range."""
         logger_mp.info("Initialize Inspire_Controller_FTP...")
         from inspire_sdkpy import inspire_dds, inspire_hand_defaut # lazy import
         self.fps = fps
@@ -184,28 +184,28 @@ class Inspire_Controller_FTP:
         else:
             ChannelFactoryInitialize(0)
 
-        # FTP 左右手使用独立命令 topic。
+        # FTP left/right hands use separate command topics.
         self.LeftHandCmd_publisher = ChannelPublisher(kTopicInspireFTPLeftCommand, inspire_dds.inspire_hand_ctrl)
         self.LeftHandCmd_publisher.Init()
         self.RightHandCmd_publisher = ChannelPublisher(kTopicInspireFTPRightCommand, inspire_dds.inspire_hand_ctrl)
         self.RightHandCmd_publisher.Init()
 
-        # 左右手状态也分别订阅。
+        # Left/right hand states are subscribed separately as well.
         self.LeftHandState_subscriber = ChannelSubscriber(kTopicInspireFTPLeftState, inspire_dds.inspire_hand_state)
         self.LeftHandState_subscriber.Init() # Consider using callback if preferred: Init(callback_func, period_ms)
         self.RightHandState_subscriber = ChannelSubscriber(kTopicInspireFTPRightState, inspire_dds.inspire_hand_state)
         self.RightHandState_subscriber.Init()
 
-        # 状态 angle_act 原始范围是 0~1000，这里统一缓存为 0~1。
+        # Raw angle_act state is 0~1000; cache it as 0~1 here.
         self.left_hand_state_array  = Array('d', Inspire_Num_Motors, lock=True)
         self.right_hand_state_array = Array('d', Inspire_Num_Motors, lock=True)
 
-        # 后台订阅线程读取 FTP hand state。
+        # Background subscription thread for FTP hand state.
         self.subscribe_state_thread = threading.Thread(target=self._subscribe_hand_state)
         self.subscribe_state_thread.daemon = True
         self.subscribe_state_thread.start()
 
-        # 等待首次状态消息，超时后继续运行，方便调试没有手部硬件的场景。
+        # Wait for the first state message, but continue after timeout so hardware-free debugging is possible.
         wait_count = 0
         while not (any(self.left_hand_state_array) or any(self.right_hand_state_array)):
             if wait_count % 100 == 0: # Print every second
@@ -225,7 +225,7 @@ class Inspire_Controller_FTP:
         logger_mp.info("Initialize Inspire_Controller_FTP OK!\n")
 
     def _subscribe_hand_state(self):
-        """订阅 FTP 左右手状态，并把 0~1000 的 angle_act 缩放到 0~1。"""
+        """Subscribe to FTP left/right hand states and scale angle_act from 0~1000 to 0~1."""
         logger_mp.info("[Inspire_Controller_FTP] Subscribe thread started.")
         while True:
             # Left Hand
@@ -251,15 +251,15 @@ class Inspire_Controller_FTP:
 
     def _send_hand_command(self, left_angle_cmd_scaled, right_angle_cmd_scaled):
         """
-        向左右 FTP 手发送 0~1000 的角度命令。
+        Send 0~1000 angle commands to the left/right FTP hands.
         """
-        # 左手命令。
+        # Left-hand command.
         left_cmd_msg = inspire_hand_defaut.get_inspire_hand_ctrl()
         left_cmd_msg.angle_set = left_angle_cmd_scaled
         left_cmd_msg.mode = 0b0001 # Mode 1: Angle control
         self.LeftHandCmd_publisher.Write(left_cmd_msg)
 
-        # 右手命令。
+        # Right-hand command.
         right_cmd_msg = inspire_hand_defaut.get_inspire_hand_ctrl()
         right_cmd_msg.angle_set = right_angle_cmd_scaled
         right_cmd_msg.mode = 0b0001 # Mode 1: Angle control
@@ -267,7 +267,7 @@ class Inspire_Controller_FTP:
 
     def control_process(self, left_hand_array, right_hand_array, left_hand_state_array, right_hand_state_array,
                               dual_hand_data_lock = None, dual_hand_state_array = None, dual_hand_action_array = None):
-        """读取 XR 手部骨架，生成 FTP 所需的 0~1000 整数角度命令。"""
+        """Read XR hand skeletons and generate the 0~1000 integer angle commands required by FTP."""
         logger_mp.info("[Inspire_Controller_FTP] Control process started.")
         self.running = True
 
@@ -277,18 +277,18 @@ class Inspire_Controller_FTP:
         try:
             while self.running:
                 start_time = time.time()
-                # 读取 XR 手部 25 点坐标。
+                # Read the 25 XR hand landmark coordinates.
                 with left_hand_array.get_lock():
                     left_hand_data  = np.array(left_hand_array[:]).reshape(25, 3).copy()
                 with right_hand_array.get_lock():
                     right_hand_data = np.array(right_hand_array[:]).reshape(25, 3).copy()
 
-                # 当前硬件状态用于外部记录。
+                # Inspire hand control and retargeting detail.
                 state_data = np.concatenate((np.array(left_hand_state_array[:]), np.array(right_hand_state_array[:])))
 
                 if not np.all(right_hand_data == 0.0) and not np.all(left_hand_data[4] == np.array([-1.13, 0.3, 0.15])): # if hand data has been initialized.
-                    # 使用相对向量做 retargeting，避免受手腕整体平移影响。
-                    # 这里和 DFX 版本同样走 DexPilot/Vector 优化，只是最后发送给 FTP SDK 前要缩放到 0~1000。
+                    # Use relative vectors for retargeting to avoid being affected by global wrist translation.
+                    # This follows the same DexPilot/Vector optimization path as DFX; only the final command is scaled to 0~1000 before sending to the FTP SDK.
                     ref_left_value = left_hand_data[self.hand_retargeting.left_indices[1,:]] - left_hand_data[self.hand_retargeting.left_indices[0,:]]
                     ref_right_value = right_hand_data[self.hand_retargeting.right_indices[1,:]] - right_hand_data[self.hand_retargeting.right_indices[0,:]]
 
@@ -309,11 +309,11 @@ class Inspire_Controller_FTP:
                             left_q_target[idx]  = normalize(left_q_target[idx], -0.1, 1.3)
                             right_q_target[idx] = normalize(right_q_target[idx], -0.1, 1.3)
 
-                # FTP SDK 发送整数刻度，因此把 0~1 命令缩放到 0~1000。
+                # The FTP SDK sends integer ticks, so scale 0~1 commands to 0~1000.
                 scaled_left_cmd = [int(np.clip(val * 1000, 0, 1000)) for val in left_q_target]
                 scaled_right_cmd = [int(np.clip(val * 1000, 0, 1000)) for val in right_q_target]
 
-                # 记录未缩放的 0~1 action，和 DFX 控制器保持一致。
+                # Record the unscaled 0~1 action to stay consistent with the DFX controller.
                 action_data = np.concatenate((left_q_target, right_q_target))
                 if dual_hand_state_array and dual_hand_action_array:
                     with dual_hand_data_lock:
@@ -328,7 +328,7 @@ class Inspire_Controller_FTP:
         finally:
             logger_mp.info("Inspire_Controller_FTP has been closed.")
 
-# Inspire 官方电机顺序如下。控制时必须按这个顺序写入 MotorCmds_。
+# Official Inspire motor order. Commands must be written into MotorCmds_ in this order.
 # Update hand state, according to the official documentation:
 # 1. https://support.unitree.com/home/en/G1_developer/inspire_dfx_dexterous_hand
 # 2. https://support.unitree.com/home/en/G1_developer/inspire_ftp_dexterity_hand

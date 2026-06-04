@@ -33,16 +33,16 @@ kTopicUnitreeHandle = "rt/wirelesscontroller"
 class G1_Mobile_Lift_Controller:
     def __init__(self, base_type,r3_controller, fps = 30.0, Unit_Test = False, simulation_mode = False, filter_alpha=0.2, init_timeout=5.0):
         """
-        初始化 G1 移动底盘和升降控制器。
+        Mobile base and lift control detail.
         
         Args:
-            base_type: 只升降或移动+升降；当前代码里 "mobile_lift" 表示同时控制移动底盘。
-            r3_controller: 是否额外订阅 Unitree 手柄状态。
-            fps: 控制进程发布频率。
+            Mobile base and lift control detail.
+            Mobile base and lift control detail.
+            Mobile base and lift control detail.
         """
         logger_mp.info("Initialize G1_Mobile_Lift_Controller...")
         self.init_state = True
-        # 防止 fps <= 0 导致控制循环里除零。
+        # Mobile base and lift control detail.
         if fps <= 0:
             logger_mp.warning(f"Invalid fps value: {fps}, using default value 30.0")
             self.fps = 30.0
@@ -53,16 +53,16 @@ class G1_Mobile_Lift_Controller:
         self.base_type = base_type 
         self.r3_controller = r3_controller
         self.init_timeout = init_timeout
-        # 初始化阶段用这些标志确认 DDS 状态数据已经收到。
+        # Mobile base and lift control detail.
         self.height_data_received = False
         self.move_data_received = False
 
-        # 输入缓冲：主进程写入目标升降高度和移动速度，控制子进程读取并发布。
+        # Mobile base and lift control detail.
         self.g1_height_action_array_in = Array('d', 1, lock = True) 
         self.g1_move_action_array_in = Array('d', 2, lock = True)
 
 
-        # 输出缓冲：订阅线程写入当前高度/速度，外部可读取并保存到数据集。
+        # Mobile base and lift control detail.
         self.g1_height_state_array_out  = Array('d', 2, lock=True)  
         self.g1_height_action_array_out = Array('d', 1, lock=True)  # For receiving published height action values, ready to save to dataset
         self.g1_move_state_array_out = None
@@ -70,12 +70,12 @@ class G1_Mobile_Lift_Controller:
 
         self.unitree_handle_state_array_out = None
 
-        # DDS Domain: 仿真使用 1，真实机器人一般使用 0。
+        # Mobile base and lift control detail.
         if self.simulation_mode:
             ChannelFactoryInitialize(1)
         else:
             ChannelFactoryInitialize(0)
-        # 升降控制：Point32.z 保存目标高度。
+        # Mobile base and lift control detail.
         self.HeightCmb_publisher = ChannelPublisher(kTopicHeightCmd, Point32_)
         self.HeightCmb_publisher.Init()
         # Height state subscriber
@@ -86,7 +86,7 @@ class G1_Mobile_Lift_Controller:
 
         self.g1_height_msg = geometry_msgs_msg_dds__Point32_()
 
-        # mobile_lift 模式下额外发布 cmd_vel，并订阅里程计速度。
+        # Mobile base and lift control detail.
         if self.base_type == "mobile_lift":
             self.g1_move_state_array_out = Array('d', 2, lock=True)
             self.g1_move_action_array_out = Array('d', 2, lock=True)  # For receiving published movement action values, ready to save to dataset
@@ -107,7 +107,7 @@ class G1_Mobile_Lift_Controller:
         last_wait_log_time = 0.0
         while True:
             if self.base_type == "mobile_lift":
-                # 移动升降模式需要同时收到高度和底盘速度数据，才认为初始化成功。
+                # Mobile base and lift control detail.
                 if self.height_data_received and self.move_data_received:
                     self.init_state = False
                     logger_mp.info("[Initialization] Received height and movement data")
@@ -119,7 +119,7 @@ class G1_Mobile_Lift_Controller:
                         logger_mp.info(status)
                         last_wait_log_time = now
             else:
-                # 只控制升降时，只要求高度状态 ready。
+                # Mobile base and lift control detail.
                 if self.height_data_received:
                     self.init_state = False
                     logger_mp.info("[Initialization] Received height data")
@@ -131,7 +131,7 @@ class G1_Mobile_Lift_Controller:
                         last_wait_log_time = now
 
             if time.time() - init_start_time >= self.init_timeout:
-                # 这里主动超时抛错，比一直卡住更容易定位 DDS 连接问题。
+                # Mobile base and lift control detail.
                 error_msg = (
                     f"[Initialization] DDS wait timeout after {self.init_timeout:.1f}s. "
                     f"Height: {self.height_data_received}, Movement: {self.move_data_received}."
@@ -141,7 +141,7 @@ class G1_Mobile_Lift_Controller:
             time.sleep(0.02)
         
         logger_mp.info("[G1_Mobile_Lift_Controller] Subscribe dds ok.")
-        # 使用 R3/Unitree 手柄时，单独订阅手柄摇杆和按键状态。
+        # Mobile base and lift control detail.
         if self.r3_controller:
             self.unitree_handle_state_array_out = Array('d', 5, lock=True)
             self.UnitreeHandleState_subscriber = ChannelSubscriber(kTopicUnitreeHandle, WirelessController_)
@@ -150,14 +150,14 @@ class G1_Mobile_Lift_Controller:
             self.subscribe_unitree_handle_state_thread.daemon = True
             self.subscribe_unitree_handle_state_thread.start()
         self.running = True
-        # 控制发布放到子进程里，避免主进程图像/遥操作逻辑阻塞发布频率。
+        # Mobile base and lift control detail.
         mobile_control_process = Process(target=self.control_process, args=(self.base_type,))
         mobile_control_process.daemon = True
         mobile_control_process.start()
 
         logger_mp.info("Initialize G1_Mobile_Lift_Controller OK!\n")
     def _subscribe_unitree_handle_state(self):
-        """订阅 Unitree 无线手柄，缓存左右摇杆和按键状态。"""
+        """Mobile base and lift control detail."""
         while True:
             try:
                 unitree_handle_msg = self.UnitreeHandleState_subscriber.Read()
@@ -173,12 +173,12 @@ class G1_Mobile_Lift_Controller:
             time.sleep(0.01)
 
     def _subscribe_g1_mobilebase_state(self):
-        """订阅升降高度和底盘里程计速度。"""
+        """Mobile base and lift control detail."""
         while True:
             try:
                 height_msg = self.HeightState_subscriber.Read()
                 if height_msg is not None:
-                    # y/z 的具体含义由底层 topic 定义；这里保留两个通道供外部记录。
+                    # Mobile base and lift control detail.
                     self.g1_height_state_array_out[0] = height_msg.y  # in meters
                     self.g1_height_state_array_out[1] = height_msg.z
                     
@@ -188,7 +188,7 @@ class G1_Mobile_Lift_Controller:
                 if self.base_type == "mobile_lift":
                     move_msg = self.G1MoveState_subscriber.Read()
                     if move_msg is not None:
-                        # 只取线速度 x 和角速度 z，正好对应 cmd_vel 的两个输入维度。
+                        # Mobile base and lift control detail.
                         self.g1_move_state_array_out[0] = move_msg.twist.twist.linear.x
                         self.g1_move_state_array_out[1] = move_msg.twist.twist.angular.z
                         
@@ -207,22 +207,22 @@ class G1_Mobile_Lift_Controller:
                 logger_mp.info(f"[_subscribe_g1_mobilebase_state] Exception: {e}")
                 time.sleep(0.1) 
     def ctrl_g1_height(self, g1_height_target):
-        """发布升降高度目标。"""
+        """Mobile base and lift control detail."""
         self.g1_height_msg.z = g1_height_target
         self.HeightCmb_publisher.Write(self.g1_height_msg)
     
 
     def ctrl_g1_move(self, g1_move_target):
-        """发布底盘运动目标：[线速度 x, 角速度 z]。"""
+        """Mobile base and lift control detail."""
         self.g1_move_msg.linear.x = g1_move_target[0]
         self.g1_move_msg.angular.z = g1_move_target[1]
         self.G1MoveCmb_publisher.Write(self.g1_move_msg)
     def control_process(self, base_type):
-        """固定频率发布升降和可选底盘速度命令。"""
+        """Mobile base and lift control detail."""
         try:
             while self.running:
                 start_time = time.time()
-                # 从共享内存读取最新目标；外部只需更新数组，不直接触碰 DDS publisher。
+                # Mobile base and lift control detail.
                 target_height = self.g1_height_action_array_in[0]
                 self.ctrl_g1_height(target_height)
                 

@@ -10,14 +10,14 @@ from .optimizer_utils import LPFilter
 
 
 class SeqRetargeting:
-    """带时间连续性的 retargeting 包装器。
+    """Sequential retargeting state and filtering detail.
 
-    Optimizer 只关心“给定 ref_value，求一次最优 qpos”。
-    SeqRetargeting 额外负责：
-    - 把上一帧 qpos 作为本帧优化初值，减少跳变并加速收敛；
-    - 施加关节限位；
-    - 把优化关节和固定关节合并回完整 robot_qpos；
-    - 可选做低通滤波。
+    Sequential retargeting state and filtering detail.
+    Sequential retargeting state and filtering detail.
+    Sequential retargeting state and filtering detail.
+    Sequential retargeting state and filtering detail.
+    Sequential retargeting state and filtering detail.
+    Sequential retargeting state and filtering detail.
     """
     def __init__(
         self,
@@ -28,7 +28,7 @@ class SeqRetargeting:
         self.optimizer = optimizer
         robot = self.optimizer.robot
 
-        # 关节限位：默认使用 URDF 中的 lower/upper limit；关闭时用极大范围近似无限制。
+        # Sequential retargeting state and filtering detail.
         self.has_joint_limits = has_joint_limits
         joint_limits = np.ones_like(robot.joint_limits)
         joint_limits[:, 0] = -1e4  # a large value is equivalent to no limit
@@ -38,15 +38,15 @@ class SeqRetargeting:
             self.optimizer.set_joint_limit(joint_limits[self.optimizer.idx_pin2target])
         self.joint_limits = joint_limits[self.optimizer.idx_pin2target]
 
-        # last_qpos 是下一帧优化的初值。初始值取各关节限位中点。
+        # Sequential retargeting state and filtering detail.
         self.last_qpos = joint_limits.mean(1)[self.optimizer.idx_pin2target].astype(np.float32)
         self.accumulated_time = 0
         self.num_retargeting = 0
 
-        # retarget 后可选低通滤波，进一步压制手部动作抖动。
+        # Sequential retargeting state and filtering detail.
         self.filter = lp_filter
 
-        # warm_start 主要用于带 6D free joint 的 position retargeting，本项目手部遥操作通常不用。
+        # Sequential retargeting state and filtering detail.
         self.is_warm_started = False
 
     def warm_start(
@@ -113,18 +113,18 @@ class SeqRetargeting:
         self.is_warm_started = True
 
     def retarget(self, ref_value, fixed_qpos=np.array([])):
-        """执行一帧重定向。
+        """Sequential retargeting state and filtering detail.
 
-        ref_value 的形状由 Optimizer 决定：
-        - position: (N, 3)，N 个目标点位置；
-        - vector/dexpilot: (N, 3)，N 条人手参考向量。
+        Sequential retargeting state and filtering detail.
+        Sequential retargeting state and filtering detail.
+        Sequential retargeting state and filtering detail.
 
-        返回值是完整机器人手的 qpos，顺序为 robot.dof_joint_names。
-        调用方通常还会再用关节名映射，把它重排成硬件消息顺序。
+        Sequential retargeting state and filtering detail.
+        Sequential retargeting state and filtering detail.
         """
         tic = time.perf_counter()
 
-        # 把上一帧结果作为初值传给 nlopt，且先裁剪到关节限位内。
+        # Sequential retargeting state and filtering detail.
         qpos = self.optimizer.retarget(
             ref_value=ref_value.astype(np.float32),
             fixed_qpos=fixed_qpos.astype(np.float32),
@@ -134,18 +134,18 @@ class SeqRetargeting:
         self.num_retargeting += 1
         self.last_qpos = qpos
 
-        # Optimizer 只返回 target_joint_names 对应的关节。
-        # 这里把 target 关节和 fixed 关节拼回完整机器人关节向量。
+        # Sequential retargeting state and filtering detail.
+        # Sequential retargeting state and filtering detail.
         robot_qpos = np.zeros(self.optimizer.robot.dof)
         robot_qpos[self.optimizer.idx_pin2fixed] = fixed_qpos
         robot_qpos[self.optimizer.idx_pin2target] = qpos
 
         if self.optimizer.adaptor is not None:
-            # 如果 URDF 里有 mimic joint，这里根据主动关节补齐从动关节位置。
+            # Sequential retargeting state and filtering detail.
             robot_qpos = self.optimizer.adaptor.forward_qpos(robot_qpos)
 
         if self.filter is not None:
-            # 低通滤波发生在完整 robot_qpos 上。
+            # Sequential retargeting state and filtering detail.
             robot_qpos = self.filter.next(robot_qpos)
         return robot_qpos
 

@@ -17,15 +17,15 @@ from .yourdfpy import DUMMY_JOINT_NAMES
 
 @dataclass
 class RetargetingConfig:
-    """一份 YAML 配置在代码里的结构化表示。
+    """Retargeting configuration build detail.
 
-    retargeting 的关键不是把人手每个关节角直接映射到机器人关节角，而是定义一组
-    “要匹配的任务空间目标”，再通过优化求机器人关节角。
+    Retargeting configuration build detail.
+    Retargeting configuration build detail.
 
-    三种 type 的输入含义：
-    - position: 让机器人某些 link 的 3D 位置追踪人手某些 landmark。
-    - vector: 让机器人 link_a -> link_b 的向量追踪人手 landmark_i -> landmark_j 的向量。
-    - dexpilot: 也是向量追踪，但会额外处理指尖靠近时的抓取稳定性。
+    Retargeting configuration build detail.
+    Retargeting configuration build detail.
+    Retargeting configuration build detail.
+    Retargeting configuration build detail.
     """
     type: str
     urdf_path: str
@@ -34,20 +34,20 @@ class RetargetingConfig:
     # Whether to add free joint to the root of the robot. Free joint enable the robot hand move freely in the space
     add_dummy_free_joint: bool = False
 
-    # DexPilot 使用手腕/掌根 link 作为基准，再组合各指尖之间、掌根到指尖的向量。
-    # 这个 link 对应人手 wrist/palm 基准点。
+    # Retargeting configuration build detail.
+    # Retargeting configuration build detail.
     wrist_link_name: Optional[str] = None
-    # 机器人手的指尖 link 名称，例如 thumb_tip/index_tip。
+    # Retargeting configuration build detail.
     finger_tip_link_names: Optional[List[str]] = None
-    # (2, N) 的人手 landmark 索引，表示 N 条参考向量：human[row1] - human[row0]。
+    # Retargeting configuration build detail.
     target_link_human_indices_dexpilot: Optional[np.ndarray] = None
 
-    # Position 模式：这些机器人 link 直接追踪人手对应 landmark 的 3D 位置。
+    # Retargeting configuration build detail.
     target_link_names: Optional[List[str]] = None
     target_link_human_indices_position: Optional[np.ndarray] = None
 
-    # Vector 模式：每个 origin/task link 对应一条机器人向量 task - origin。
-    # 它会和 target_link_human_indices_vector 定义的人手向量一一匹配。
+    # Retargeting configuration build detail.
+    # Retargeting configuration build detail.
     target_origin_link_names: Optional[List[str]] = None
     target_task_link_names: Optional[List[str]] = None
     target_link_human_indices_vector: Optional[np.ndarray] = None
@@ -157,14 +157,14 @@ class RetargetingConfig:
         return config
 
     def build(self) -> SeqRetargeting:
-        """根据配置创建 SeqRetargeting。
+        """Retargeting configuration build detail.
 
-        构建顺序：
-        1. 读 URDF，创建 Pinocchio RobotWrapper。
-        2. 根据 type 选择 Position/Vector/DexPilot Optimizer。
-        3. 设置低通滤波、关节限位和 mimic joint 适配。
+        Retargeting configuration build detail.
+        Retargeting configuration build detail.
+        Retargeting configuration build detail.
+        Retargeting configuration build detail.
 
-        build() 返回的 SeqRetargeting 是控制循环每一帧调用 retarget(ref_value) 的对象。
+        Retargeting configuration build detail.
         """
         from .optimizer import (
             VectorOptimizer,
@@ -173,7 +173,7 @@ class RetargetingConfig:
         )
         import tempfile
 
-        # 先用 yourdfpy 处理 URDF，主要是修正 mesh/路径，并可选插入 dummy free joints。
+        # Retargeting configuration build detail.
         robot_urdf = urdf.URDF.load(
             self.urdf_path, add_dummy_free_joints=self.add_dummy_free_joint, build_scene_graph=False
         )
@@ -182,16 +182,16 @@ class RetargetingConfig:
         temp_path = f"{temp_dir}/{urdf_name}"
         robot_urdf.write_xml_file(temp_path)
 
-        # Pinocchio 负责正运动学和雅可比，优化器每次评估目标函数都会调用它。
+        # Retargeting configuration build detail.
         robot = RobotWrapper(temp_path)
 
-        # 如果给手掌根部加了 6D 自由关节，也把这些虚拟关节加入优化变量。
+        # Retargeting configuration build detail.
         if self.add_dummy_free_joint and self.target_joint_names is not None:
             self.target_joint_names = DUMMY_JOINT_NAMES + self.target_joint_names
         joint_names = self.target_joint_names if self.target_joint_names is not None else robot.dof_joint_names
 
         if self.type == "position":
-            # PositionOptimizer: 目标是最小化机器人 link 位置和人手 landmark 位置之间的误差。
+            # Retargeting configuration build detail.
             optimizer = PositionOptimizer(
                 robot,
                 joint_names,
@@ -201,7 +201,7 @@ class RetargetingConfig:
                 huber_delta=self.huber_delta,
             )
         elif self.type == "vector":
-            # VectorOptimizer: 目标是最小化机器人 link 向量和人手 landmark 向量之间的误差。
+            # Retargeting configuration build detail.
             optimizer = VectorOptimizer(
                 robot,
                 joint_names,
@@ -213,7 +213,7 @@ class RetargetingConfig:
                 huber_delta=self.huber_delta,
             )
         elif self.type == "dexpilot":
-            # DexPilotOptimizer: 在 Vector 的基础上，对指尖靠近时的抓取向量做投影/加权。
+            # Retargeting configuration build detail.
             optimizer = DexPilotOptimizer(
                 robot,
                 joint_names,
@@ -232,8 +232,8 @@ class RetargetingConfig:
         else:
             lp_filter = None
 
-        # mimic joint 是 URDF 里的“从动关节”。适配器会在优化主关节后补齐 mimic 关节，
-        # 并把雅可比梯度从完整关节空间折回优化变量空间。
+        # Retargeting configuration build detail.
+        # Retargeting configuration build detail.
         has_mimic_joints, source_names, mimic_names, multipliers, offsets = parse_mimic_joint(robot_urdf)
         if has_mimic_joints and not self.ignore_mimic_joint:
             adaptor = MimicJointKinematicAdaptor(

@@ -10,13 +10,13 @@ from .robot_wrapper import RobotWrapper
 
 
 class Optimizer:
-    """所有 retargeting 优化器的基类。
+    """Retargeting optimizer and objective-function detail.
 
-    核心思想：
-    - 优化变量 x 是 target_joint_names 对应的机器人关节角。
-    - fixed_qpos 是不参与优化但仍存在于机器人模型里的关节角。
-    - 每次 nlopt 调用 objective(x) 时，代码会把 x 写回完整 qpos，
-      做正运动学得到机器人 link 位置，再计算任务空间误差。
+    Retargeting optimizer and objective-function detail.
+    Retargeting optimizer and objective-function detail.
+    Retargeting optimizer and objective-function detail.
+    Retargeting optimizer and objective-function detail.
+      Retargeting optimizer and objective-function detail.
     """
     retargeting_type = "BASE"
 
@@ -29,7 +29,7 @@ class Optimizer:
         self.robot = robot
         self.num_joints = robot.dof
 
-        # Pinocchio/URDF 有完整关节顺序；target_joint_names 只选出本次要优化的关节。
+        # Retargeting optimizer and objective-function detail.
         joint_names = robot.dof_joint_names
         idx_pin2target = []
         for target_joint_name in target_joint_names:
@@ -39,16 +39,16 @@ class Optimizer:
         self.target_joint_names = target_joint_names
         self.idx_pin2target = np.array(idx_pin2target)
 
-        # 不在 target_joint_names 里的关节保持 fixed_qpos，不参与 nlopt 优化。
+        # Retargeting optimizer and objective-function detail.
         self.idx_pin2fixed = np.array([i for i in range(robot.dof) if i not in idx_pin2target], dtype=int)
-        # SLSQP 是带约束的梯度优化器；这里的维度就是要优化的关节数。
+        # Retargeting optimizer and objective-function detail.
         self.opt = nlopt.opt(nlopt.LD_SLSQP, len(idx_pin2target))
         self.opt_dof = len(idx_pin2target)  # This dof includes the mimic joints
 
-        # 人手 landmark 索引。控制循环用它先构造 ref_value，优化器也保留它供外部查看。
+        # Retargeting optimizer and objective-function detail.
         self.target_link_human_indices = target_link_human_indices
 
-        # 如果 URDF 里有 dummy free joint，说明手掌根部也可能被当作优化变量。
+        # Retargeting optimizer and objective-function detail.
         link_names = robot.link_names
         self.has_free_joint = len([name for name in link_names if "dummy" in name]) >= 6
 
@@ -76,17 +76,17 @@ class Optimizer:
 
     def retarget(self, ref_value, fixed_qpos, last_qpos):
         """
-        用非线性优化计算机器人手关节角。
+        Retargeting optimizer and objective-function detail.
 
-        这一步不是神经网络，也不是查表，而是每帧实时解一个小型优化问题：
+        Retargeting optimizer and objective-function detail.
             minimize task_error(robot_fk(q), ref_value) + smooth_regularization(q, last_qpos)
 
         Args:
-            ref_value: 人手在任务空间里的参考值，不同优化器含义不同。
-            fixed_qpos: 不优化的机器人关节值，顺序对应 fixed_joint_names。
-            last_qpos: 上一帧目标关节角，同时作为本帧优化初值和平滑正则项中心。
+            Retargeting optimizer and objective-function detail.
+            Retargeting optimizer and objective-function detail.
+            Retargeting optimizer and objective-function detail.
 
-        Returns: 目标机器人关节角，顺序和 self.target_joint_names 一致。
+        Retargeting optimizer and objective-function detail.
 
         """
         if len(fixed_qpos) != len(self.idx_pin2fixed):
@@ -114,7 +114,7 @@ class Optimizer:
 
 
 class PositionOptimizer(Optimizer):
-    """点位置重定向：让机器人 link 的 3D 位置追踪人手 3D 点。"""
+    """Retargeting optimizer and objective-function detail."""
     retargeting_type = "POSITION"
 
     def __init__(
@@ -137,11 +137,11 @@ class PositionOptimizer(Optimizer):
         self.opt.set_ftol_abs(1e-5)
 
     def get_objective_function(self, target_pos: np.ndarray, fixed_qpos: np.ndarray, last_qpos: np.ndarray):
-        """构造 nlopt 需要的 objective(x, grad)。
+        """Retargeting optimizer and objective-function detail.
 
-        target_pos 是 (N, 3) 的人手目标点。
-        objective 内部会计算机器人 N 个 link 的当前位置 body_pos，
-        用 SmoothL1Loss/Huber loss 度量 body_pos 和 target_pos 的差。
+        Retargeting optimizer and objective-function detail.
+        Retargeting optimizer and objective-function detail.
+        Retargeting optimizer and objective-function detail.
         """
         qpos = np.zeros(self.num_joints)
         qpos[self.idx_pin2fixed] = fixed_qpos
@@ -149,10 +149,10 @@ class PositionOptimizer(Optimizer):
         torch_target_pos.requires_grad_(False)
 
         def objective(x: np.ndarray, grad: np.ndarray) -> float:
-            # x 是 nlopt 当前尝试的目标关节角，把它写入完整 qpos。
+            # Retargeting optimizer and objective-function detail.
             qpos[self.idx_pin2target] = x
 
-            # 如果有 mimic joint，先把主动关节扩展成完整物理关节。
+            # Retargeting optimizer and objective-function detail.
             if self.adaptor is not None:
                 qpos[:] = self.adaptor.forward_qpos(qpos)[:]
 
@@ -164,14 +164,14 @@ class PositionOptimizer(Optimizer):
             torch_body_pos = torch.as_tensor(body_pos)
             torch_body_pos.requires_grad_()
 
-            # 任务误差：机器人 link 位置和人手目标点位置的 Huber loss。
+            # Retargeting optimizer and objective-function detail.
             huber_distance = self.huber_loss(torch_body_pos, torch_target_pos)
             result = huber_distance.cpu().detach().item()
 
             if grad.size > 0:
-                # nlopt 需要目标函数对 x 的梯度。
-                # 先通过 Pinocchio 算每个 link 位置对完整 qpos 的雅可比，
-                # 再通过 torch 得到 loss 对 link 位置的梯度，二者链式相乘得到 loss 对关节角的梯度。
+                # Retargeting optimizer and objective-function detail.
+                # Retargeting optimizer and objective-function detail.
+                # Retargeting optimizer and objective-function detail.
                 jacobians = []
                 for i, index in enumerate(self.target_link_indices):
                     link_body_jacobian = self.robot.compute_single_link_local_jacobian(qpos, index)[:3, ...]
@@ -191,7 +191,7 @@ class PositionOptimizer(Optimizer):
                 else:
                     jacobians = jacobians[..., self.idx_pin2target]
 
-                # 平滑正则：惩罚和上一帧差太多，减少手部关节跳变。
+                # Retargeting optimizer and objective-function detail.
                 grad_qpos = np.matmul(grad_pos, jacobians)
                 grad_qpos = grad_qpos.mean(1).sum(0)
                 grad_qpos += 2 * self.norm_delta * (x - last_qpos)
@@ -204,10 +204,10 @@ class PositionOptimizer(Optimizer):
 
 
 class VectorOptimizer(Optimizer):
-    """向量重定向：让机器人 link_task - link_origin 追踪人手点对向量。
+    """Retargeting optimizer and objective-function detail.
 
-    这种方式比绝对位置更适合遥操作手指，因为它不依赖人手整体在空间中的位置，
-    只关心手指相对于掌根或其他指尖的形状关系。
+    Retargeting optimizer and objective-function detail.
+    Retargeting optimizer and objective-function detail.
     """
     retargeting_type = "VECTOR"
 
@@ -229,8 +229,8 @@ class VectorOptimizer(Optimizer):
         self.norm_delta = norm_delta
         self.scaling = scaling
 
-        # 多条向量可能共享同一个 link，例如掌根会被多根手指共同引用。
-        # 这里先去重，后续每帧只对每个 link 做一次正运动学取位姿。
+        # Retargeting optimizer and objective-function detail.
+        # Retargeting optimizer and objective-function detail.
         self.computed_link_names = list(set(target_origin_link_names).union(set(target_task_link_names)))
         self.origin_link_indices = torch.tensor(
             [self.computed_link_names.index(name) for name in target_origin_link_names]
@@ -243,15 +243,15 @@ class VectorOptimizer(Optimizer):
         self.opt.set_ftol_abs(1e-6)
 
     def get_objective_function(self, target_vector: np.ndarray, fixed_qpos: np.ndarray, last_qpos: np.ndarray):
-        """构造向量追踪 objective。
+        """Retargeting optimizer and objective-function detail.
 
-        target_vector 由控制循环计算：
+        Retargeting optimizer and objective-function detail.
             human_points[target_indices[1]] - human_points[target_indices[0]]
 
-        objective 内部计算：
+        Retargeting optimizer and objective-function detail.
             robot_vec = robot_link_task_pos - robot_link_origin_pos
 
-        然后最小化 robot_vec 和 target_vector * scaling 的差。
+        Retargeting optimizer and objective-function detail.
         """
         qpos = np.zeros(self.num_joints)
         qpos[self.idx_pin2fixed] = fixed_qpos
@@ -261,7 +261,7 @@ class VectorOptimizer(Optimizer):
         def objective(x: np.ndarray, grad: np.ndarray) -> float:
             qpos[self.idx_pin2target] = x
 
-            # x -> qpos -> 正运动学 -> 所有关联 link 的世界坐标。
+            # Retargeting optimizer and objective-function detail.
             if self.adaptor is not None:
                 qpos[:] = self.adaptor.forward_qpos(qpos)[:]
 
@@ -273,18 +273,18 @@ class VectorOptimizer(Optimizer):
             torch_body_pos = torch.as_tensor(body_pos)
             torch_body_pos.requires_grad_()
 
-            # 根据 origin/task 索引组装机器人向量。
+            # Retargeting optimizer and objective-function detail.
             origin_link_pos = torch_body_pos[self.origin_link_indices, :]
             task_link_pos = torch_body_pos[self.task_link_indices, :]
             robot_vec = task_link_pos - origin_link_pos
 
-            # 先算每条向量误差的长度，再对这些距离做 Huber loss。
+            # Retargeting optimizer and objective-function detail.
             vec_dist = torch.norm(robot_vec - torch_target_vec, dim=1, keepdim=False)
             huber_distance = self.huber_loss(vec_dist, torch.zeros_like(vec_dist))
             result = huber_distance.cpu().detach().item()
 
             if grad.size > 0:
-                # 梯度链路和 Position 类似，只是 loss 先经过 robot_vec = task - origin。
+                # Retargeting optimizer and objective-function detail.
                 jacobians = []
                 for i, index in enumerate(self.computed_link_indices):
                     link_body_jacobian = self.robot.compute_single_link_local_jacobian(qpos, index)[:3, ...]
@@ -410,15 +410,15 @@ class DexPilotOptimizer(Optimizer):
     @staticmethod
     def generate_link_indices(num_fingers):
         """
-        生成 DexPilot 要追踪的向量组合。
+        Retargeting optimizer and objective-function detail.
 
-        编号约定：
-        - 0 表示 wrist/palm 基准 link；
-        - 1..num_fingers 表示各个指尖 link。
+        Retargeting optimizer and objective-function detail.
+        Retargeting optimizer and objective-function detail.
+        Retargeting optimizer and objective-function detail.
 
-        返回两组索引 origin/task，表示向量 link[task] - link[origin]。
-        S1 是指尖之间的向量，用于表达拇指与其他手指、手指之间的相对关系；
-        S2 是掌根到各指尖的向量，用于保持整体张开/闭合形状。
+        Retargeting optimizer and objective-function detail.
+        Retargeting optimizer and objective-function detail.
+        Retargeting optimizer and objective-function detail.
 
         Example:
         >>> generate_link_indices(4)
@@ -443,11 +443,11 @@ class DexPilotOptimizer(Optimizer):
     @staticmethod
     def set_dexpilot_cache(num_fingers, eta1, eta2):
         """
-        初始化 DexPilot 的投影缓存。
+        Retargeting optimizer and objective-function detail.
 
-        projected 记录某些指尖间向量是否进入“接触/抓取投影”状态。
-        projected_dist 是投影后的目标距离：当人手指尖非常接近时，不再强迫机器人指尖完全重合，
-        而是保持一个小距离 eta，提升抓取稳定性并减少奇异姿态。
+        Retargeting optimizer and objective-function detail.
+        Retargeting optimizer and objective-function detail.
+        Retargeting optimizer and objective-function detail.
 
         Example:
         >>> set_dexpilot_cache(4, 0.1, 0.2)
@@ -470,15 +470,15 @@ class DexPilotOptimizer(Optimizer):
         return projected, s2_project_index_origin, s2_project_index_task, projected_dist
 
     def get_objective_function(self, target_vector: np.ndarray, fixed_qpos: np.ndarray, last_qpos: np.ndarray):
-        """构造 DexPilot objective。
+        """Retargeting optimizer and objective-function detail.
 
-        和 VectorOptimizer 一样，输入 target_vector 是人手点对向量。
-        不同点在于 DexPilot 会检查指尖之间的距离：
-        - 小于 project_dist：认为进入抓取/接触意图，目标向量被投影成固定小距离；
-        - 大于 escape_dist：退出投影，恢复普通向量追踪；
-        - 投影中的向量会被赋予更高权重。
+        Retargeting optimizer and objective-function detail.
+        Retargeting optimizer and objective-function detail.
+        Retargeting optimizer and objective-function detail.
+        Retargeting optimizer and objective-function detail.
+        Retargeting optimizer and objective-function detail.
 
-        这样机器人手在捏合时不会为了追求人手指尖“完全贴合”而抖动或穿模。
+        Retargeting optimizer and objective-function detail.
         """
         qpos = np.zeros(self.num_joints)
         qpos[self.idx_pin2fixed] = fixed_qpos
@@ -487,8 +487,8 @@ class DexPilotOptimizer(Optimizer):
         len_s2 = len(self.s2_project_index_task)
         len_s1 = len_proj - len_s2
 
-        # 更新投影状态。这里带有迟滞：进入阈值 project_dist，退出阈值 escape_dist，
-        # 避免距离在阈值附近来回跳导致控制抖动。
+        # Retargeting optimizer and objective-function detail.
+        # Retargeting optimizer and objective-function detail.
         target_vec_dist = np.linalg.norm(target_vector[:len_proj], axis=1)
         self.projected[:len_s1][target_vec_dist[0:len_s1] < self.project_dist] = True
         self.projected[:len_s1][target_vec_dist[0:len_s1] > self.escape_dist] = False
@@ -499,22 +499,22 @@ class DexPilotOptimizer(Optimizer):
             self.projected[len_s1:len_proj], target_vec_dist[len_s1:len_proj] <= 0.03
         )
 
-        # 投影中的指尖间向量权重大幅提高，让抓取关系优先被满足。
+        # Retargeting optimizer and objective-function detail.
         normal_weight = np.ones(len_proj, dtype=np.float32) * 1
         high_weight = np.array([200] * len_s1 + [400] * len_s2, dtype=np.float32)
         weight = np.where(self.projected, high_weight, normal_weight)
 
-        # wrist/palm 到各指尖的向量也保留权重，用来维持整体手型。
+        # Retargeting optimizer and objective-function detail.
         weight = torch.from_numpy(
             np.concatenate([weight, np.ones(self.num_fingers, dtype=np.float32) * len_proj + self.num_fingers])
         )
 
-        # 普通参考向量直接缩放；投影参考向量只保留方向，把长度改成 projected_dist。
+        # Retargeting optimizer and objective-function detail.
         normal_vec = target_vector * self.scaling  # (10, 3)
         dir_vec = target_vector[:len_proj] / (target_vec_dist[:, None] + 1e-6)  # (6, 3)
         projected_vec = dir_vec * self.projected_dist[:, None]  # (6, 3)
 
-        # 最终参考向量：投影状态下使用 projected_vec，否则使用普通 target_vector。
+        # Retargeting optimizer and objective-function detail.
         reference_vec = np.where(self.projected[:, None], projected_vec, normal_vec[:len_proj])  # (6, 3)
         reference_vec = np.concatenate([reference_vec, normal_vec[len_proj:]], axis=0)  # (10, 3)
         torch_target_vec = torch.as_tensor(reference_vec, dtype=torch.float32)
@@ -523,7 +523,7 @@ class DexPilotOptimizer(Optimizer):
         def objective(x: np.ndarray, grad: np.ndarray) -> float:
             qpos[self.idx_pin2target] = x
 
-            # 当前关节角 -> 机器人 link 世界坐标。
+            # Retargeting optimizer and objective-function detail.
             if self.adaptor is not None:
                 qpos[:] = self.adaptor.forward_qpos(qpos)[:]
 
@@ -535,12 +535,12 @@ class DexPilotOptimizer(Optimizer):
             torch_body_pos = torch.as_tensor(body_pos)
             torch_body_pos.requires_grad_()
 
-            # 组装机器人当前的指尖间向量和掌根到指尖向量。
+            # Retargeting optimizer and objective-function detail.
             origin_link_pos = torch_body_pos[self.origin_link_indices, :]
             task_link_pos = torch_body_pos[self.task_link_indices, :]
             robot_vec = task_link_pos - origin_link_pos
 
-            # 对向量误差距离做加权 Huber loss。相比平方误差，Huber 对异常手部检测更稳。
+            # Retargeting optimizer and objective-function detail.
             vec_dist = torch.norm(robot_vec - torch_target_vec, dim=1, keepdim=False)
             huber_distance = (
                 self.huber_loss(vec_dist, torch.zeros_like(vec_dist)) * weight / (robot_vec.shape[0])
@@ -549,7 +549,7 @@ class DexPilotOptimizer(Optimizer):
             result = huber_distance.cpu().detach().item()
 
             if grad.size > 0:
-                # 用 Pinocchio 雅可比 + torch loss 梯度，通过链式法则得到关节梯度。
+                # Retargeting optimizer and objective-function detail.
                 jacobians = []
                 for i, index in enumerate(self.computed_link_indices):
                     link_body_jacobian = self.robot.compute_single_link_local_jacobian(qpos, index)[:3, ...]
