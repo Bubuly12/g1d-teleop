@@ -1,4 +1,5 @@
 import os
+import shutil
 import cv2
 import json
 import datetime
@@ -41,9 +42,8 @@ class EpisodeWriter():
         self.item_id = -1
         self.episode_id = -1
         if os.path.exists(self.task_dir):
-            episode_dirs = [episode_dir for episode_dir in os.listdir(self.task_dir) if 'episode_' in episode_dir and not episode_dir.endswith('.zip')]
-            episode_last = sorted(episode_dirs)[-1] if len(episode_dirs) > 0 else None
-            self.episode_id = 0 if episode_last is None else int(episode_last.split('_')[-1])
+            episode_last = self._last_episode_dir()
+            self.episode_id = -1 if episode_last is None else int(episode_last.split('_')[-1])
             logger_mp.info(f"==> task_dir directory already exist, now self.episode_id is:{self.episode_id}")
         else:
             os.makedirs(self.task_dir)
@@ -60,6 +60,28 @@ class EpisodeWriter():
 
         logger_mp.info("==> EpisodeWriter initialized successfully.")
     
+
+    def _episode_dirs(self):
+        if not os.path.exists(self.task_dir):
+            return []
+        return sorted(
+            episode_dir
+            for episode_dir in os.listdir(self.task_dir)
+            if episode_dir.startswith('episode_')
+            and not episode_dir.endswith('.zip')
+            and os.path.isdir(os.path.join(self.task_dir, episode_dir))
+        )
+
+    def _last_episode_dir(self):
+        episode_dirs = self._episode_dirs()
+        return episode_dirs[-1] if episode_dirs else None
+
+    def _next_episode_id(self):
+        episode_last = self._last_episode_dir()
+        if episode_last is None:
+            return 0
+        return int(episode_last.split('_')[-1]) + 1
+
     def is_ready(self):
         return self.is_available
 
@@ -87,7 +109,7 @@ class EpisodeWriter():
             }
 
  
-    def create_episode(self, episode_id: int):
+    def create_episode(self, episode_id: int | None = None):
         """
         Create a new episode.
         Args:
@@ -103,7 +125,7 @@ class EpisodeWriter():
 
         # Reset episode-related data and create necessary directories
         self.item_id = -1
-        self.episode_id = episode_id
+        self.episode_id = self._next_episode_id() if episode_id is None else int(episode_id)
         
         self.episode_dir = os.path.join(self.task_dir, f"episode_{str(self.episode_id).zfill(4)}")
         self.color_dir = os.path.join(self.episode_dir, 'colors')
@@ -221,6 +243,29 @@ class EpisodeWriter():
         self.need_save = False     # Reset the save flag
         self.is_available = True   # Mark the class as available after saving
         logger_mp.info(f"==> Episode saved successfully to {self.json_path}.")
+
+
+    def delete_last_episode(self):
+        """Delete the latest saved episode directory.
+
+        This is intended for rejecting a bad demonstration from the controller.
+        It refuses to delete while an episode is still recording or being saved.
+        """
+        if not self.is_available or self.need_save or not self.item_data_queue.empty():
+            logger_mp.warning("==> Cannot delete episode while recording/saving is active.")
+            return False
+
+        episode_last = self._last_episode_dir()
+        if episode_last is None:
+            logger_mp.warning("==> No episode exists to delete.")
+            return False
+
+        episode_path = os.path.join(self.task_dir, episode_last)
+        shutil.rmtree(episode_path)
+        new_last = self._last_episode_dir()
+        self.episode_id = -1 if new_last is None else int(new_last.split('_')[-1])
+        logger_mp.info(f"==> Deleted last episode: {episode_path}")
+        return True
 
     def close(self):
         """

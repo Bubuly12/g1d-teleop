@@ -175,6 +175,29 @@ python3 teleop/teleop_hand_and_arm.py \
 - `--headless`：不启动旧图像客户端界面。
 - `--enable-pico-video`：随主程序一起启动 PICO 视频发送器。
 
+可选数据采集：
+
+```bash
+python3 teleop/teleop_hand_and_arm.py \
+  --ee dex1 \
+  --input-mode controller \
+  --base-type mobile_lift \
+  --headless \
+  --enable-pico-video \
+  --record \
+  --task-dir ./data \
+  --task-name test_grasp
+```
+
+启用 `--record` 后：
+
+- 左手柄 `X`：启动或停止遥操。
+- 右手柄 `A`：开始录制；再按一次停止并保存当前 episode。
+- 数据会保存在 `--task-dir/--task-name` 下面，例如 `./data/test_grasp/episode_0001`。
+- `data.json` 保存机器人状态、动作、时间戳和任务信息。
+- 在 `--headless` 模式下，旧的 image client 不会启动。PICO 视频仍然可以实时观看，但不会自动保存进 episode。
+- 为了保存干净，建议先按 `A` 停止录制，等终端不再打印 `episode_id/item_id` 后，再退出程序。
+
 如果机器人端 IP 不是 `192.168.123.164`，可以指定：
 
 ```bash

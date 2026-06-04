@@ -108,7 +108,7 @@ STOP           = False  # Enable to begin system exit procedure
 READY          = False  # Ready to (1) enter START state, (2) enter RECORD_RUNNING state
 RECORD_RUNNING = False  # True if [Recording]
 RECORD_TOGGLE  = False  # Toggle recording state
-EPISODE_ID     = 0      # Episode ID (int) for IPC communication
+EPISODE_ID     = None   # Episode ID (int) for IPC communication; None means auto-increment
 #  -------        ---------                -----------                -----------            ---------
 #   state          [Ready]      ==>        [Recording]     ==>         [AutoSave]     -->     [Ready]
 #  -------        ---------      |         -----------      |         -----------      |     ---------
@@ -302,8 +302,11 @@ if __name__ == '__main__':
                                      rerun_log = not args.headless)
 
         logger_mp.info("Ready. Press Pico left X button or keyboard 'r' to start/stop teleoperation.")
+        if args.record:
+            logger_mp.info("Recording controls: right A toggles record save.")
         READY = True                  # now ready to (1) enter START state
         last_x_button = False
+        last_record_button = False
         last_start_state = False
 
         # main loop. When START is False, keep reading XR buttons but do not command the robot to follow.
@@ -329,6 +332,18 @@ if __name__ == '__main__':
                     START = True
             last_x_button = x_button
 
+            # Right A toggles recording when --record is enabled.
+            if args.record:
+                record_button = bool(getattr(tele_data, "right_ctrl_aButton", False))
+                if record_button and not last_record_button:
+                    if START or RECORD_RUNNING:
+                        logger_mp.info("[Pico A] Toggle recording.")
+                        RECORD_TOGGLE = True
+                    else:
+                        logger_mp.warning("[Pico A] Ignored record request because teleoperation is not START.")
+
+                last_record_button = record_button
+
             if START and not last_start_state:
                 logger_mp.info("---------------------start teleoperation-------------------------")
                 arm_ctrl.speed_gradual_max()
@@ -339,6 +354,7 @@ if __name__ == '__main__':
                 RECORD_TOGGLE = False
                 if not RECORD_RUNNING:
                     if START and recorder.create_episode(episode_id=EPISODE_ID):
+                        EPISODE_ID = None
                         RECORD_RUNNING = True
                     elif not START:
                         logger_mp.warning("Ignoring record start request because teleoperation is not START.")
@@ -356,6 +372,11 @@ if __name__ == '__main__':
                 continue
 
             # get image
+            # In headless mode img_client is None, so keep image variables defined
+            # and record only robot states/actions. Pico video is a separate stream.
+            head_img = None
+            left_wrist_img = None
+            right_wrist_img = None
             if img_client is not None and camera_config['head_camera']['enable_zmq']:
                 if args.record:
                     head_img = img_client.get_head_frame()

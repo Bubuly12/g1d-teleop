@@ -175,6 +175,29 @@ Important option notes:
 - `--headless`: do not create the old image client UI path.
 - `--enable-pico-video`: start `TeleimagerVideoSender` together with teleoperation.
 
+Optional recording:
+
+```bash
+python3 teleop/teleop_hand_and_arm.py \
+  --ee dex1 \
+  --input-mode controller \
+  --base-type mobile_lift \
+  --headless \
+  --enable-pico-video \
+  --record \
+  --task-dir ./data \
+  --task-name test_grasp
+```
+
+When `--record` is enabled:
+
+- Left-controller `X`: start or stop teleoperation.
+- Right-controller `A`: start recording; press again to stop and save the current episode.
+- Episodes are saved under `--task-dir/--task-name`, for example `./data/test_grasp/episode_0001`.
+- `data.json` stores robot states, actions, timestamps, and task metadata.
+- In `--headless` mode, the old image client is disabled. PICO video is still available for live viewing, but it is not automatically saved into the episode.
+- For a clean save, press `A` to stop recording first, wait until the terminal stops printing `episode_id/item_id`, and then exit the program.
+
 If your robot computer is not `192.168.123.164`, set:
 
 ```bash

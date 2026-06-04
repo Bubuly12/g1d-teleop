@@ -26,3 +26,6 @@ teleop/televuer/rootCA.*
 teleop/televuer/server.csr
 teleop/televuer/server_ext.cnf
 third_party/XRoboToolkit-Orin-Video-Sender/TeleimagerVideoSender
+
+# Local recorded episodes
+data/
