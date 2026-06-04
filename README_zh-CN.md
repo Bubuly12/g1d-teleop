@@ -66,28 +66,28 @@ git submodule update --init --depth 1
 安装 Teleimager：
 
 ```bash
-cd ~/xr_teleoperate/teleop/teleimager
+cd ~/g1d_xr/teleop/teleimager
 pip install -e .
 ```
 
 安装 dex-retargeting：
 
 ```bash
-cd ~/xr_teleoperate/teleop/robot_control/dex-retargeting
+cd ~/g1d_xr/teleop/robot_control/dex-retargeting
 pip install -e .
 ```
 
 安装 Unitree SDK2 Python：
 
 ```bash
-cd ~/xr_teleoperate/third_party/unitree_sdk2_python
+cd ~/g1d_xr/third_party/unitree_sdk2_python
 pip install -e .
 ```
 
 安装 XRoboToolkit pybind SDK：
 
 ```bash
-cd ~/xr_teleoperate/third_party/XRoboToolkit-PC-Service-Pybind
+cd ~/g1d_xr/third_party/XRoboToolkit-PC-Service-Pybind
 pip install -e .
 ```
 
@@ -123,7 +123,7 @@ sudo apt install -y \
 编译：
 
 ```bash
-cd ~/xr_teleoperate/third_party/XRoboToolkit-Orin-Video-Sender
+cd ~/g1d_xr/third_party/XRoboToolkit-Orin-Video-Sender
 make teleimager
 ```
 
@@ -137,7 +137,7 @@ gst-inspect-1.0 h264parse
 单独测试视频流：
 
 ```bash
-cd ~/xr_teleoperate/third_party/XRoboToolkit-Orin-Video-Sender
+cd ~/g1d_xr/third_party/XRoboToolkit-Orin-Video-Sender
 ./TeleimagerVideoSender \
   --teleimager-host 192.168.123.164 \
   --teleimager-port 55555
@@ -158,7 +158,7 @@ PICO 端打开 XRoboToolkit 的 Camera 面板，选择 `ZEDMINI` 或 `ZED`，点
 当前完整流程推荐命令：
 
 ```bash
-cd ~/xr_teleoperate
+cd ~/g1d_xr
 python3 teleop/teleop_hand_and_arm.py \
   --ee dex1 \
   --input-mode controller \
@@ -243,7 +243,7 @@ python3 teleop/robot_control/mobile_control.py --base-type mobile_lift --test-mo
 如果无法导入 `xrobotoolkit_sdk`，重新安装：
 
 ```bash
-cd ~/xr_teleoperate/third_party/XRoboToolkit-PC-Service-Pybind
+cd ~/g1d_xr/third_party/XRoboToolkit-PC-Service-Pybind
 pip install -e .
 ```
 
