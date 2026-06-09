@@ -66,29 +66,47 @@ git submodule update --init --depth 1
 Install Teleimager:
 
 ```bash
-cd ~/g1d_xr/teleop/teleimager
+cd ~/g1d-teleop/teleop/teleimager
 pip install -e .
 ```
 
 Install dex-retargeting:
 
 ```bash
-cd ~/g1d_xr/teleop/robot_control/dex-retargeting
+cd ~/g1d-teleop/teleop/robot_control/dex-retargeting
 pip install -e .
 ```
 
 Install Unitree SDK2 Python:
 
 ```bash
-cd ~/g1d_xr/third_party/unitree_sdk2_python
+cd ~/g1d-teleop/third_party/unitree_sdk2_python
 pip install -e .
 ```
 
 Install XRoboToolkit pybind SDK:
 
 ```bash
-cd ~/g1d_xr/third_party/XRoboToolkit-PC-Service-Pybind
-pip install -e .
+cd ~/g1d-teleop/third_party/XRoboToolkit-PC-Service-Pybind
+
+mkdir -p tmp
+cd tmp
+git clone https://github.com/XR-Robotics/XRoboToolkit-PC-Service.git
+cd XRoboToolkit-PC-Service/RoboticsService/PXREARobotSDK
+bash build.sh
+cd ../../../..
+
+mkdir -p lib
+mkdir -p include
+cp tmp/XRoboToolkit-PC-Service/RoboticsService/PXREARobotSDK/PXREARobotSDK.h include/
+cp -r tmp/XRoboToolkit-PC-Service/RoboticsService/PXREARobotSDK/nlohmann include/nlohmann/
+cp tmp/XRoboToolkit-PC-Service/RoboticsService/PXREARobotSDK/build/libPXREARobotSDK.so lib/
+# rm -rf tmp
+
+conda install -c conda-forge pybind11
+
+pip uninstall -y xrobotoolkit_sdk
+python setup.py install
 ```
 
 Quick checks:
@@ -123,7 +141,7 @@ sudo apt install -y \
 Build:
 
 ```bash
-cd ~/g1d_xr/third_party/XRoboToolkit-Orin-Video-Sender
+cd ~/g1d-teleop/third_party/XRoboToolkit-Orin-Video-Sender
 make teleimager
 ```
 
@@ -137,7 +155,7 @@ gst-inspect-1.0 h264parse
 Standalone video test:
 
 ```bash
-cd ~/g1d_xr/third_party/XRoboToolkit-Orin-Video-Sender
+cd ~/g1d-teleop/third_party/XRoboToolkit-Orin-Video-Sender
 ./TeleimagerVideoSender \
   --teleimager-host 192.168.123.164 \
   --teleimager-port 55555
@@ -158,7 +176,7 @@ On PICO, open the XRoboToolkit Camera panel, choose `ZEDMINI` or `ZED`, click `L
 Recommended command for the current full setup:
 
 ```bash
-cd ~/g1d_xr
+cd ~/g1d-teleop
 python3 teleop/teleop_hand_and_arm.py \
   --ee dex1 \
   --input-mode controller \
@@ -254,7 +272,7 @@ python3 teleop/robot_control/mobile_control.py --base-type mobile_lift --test-mo
 If `xrobotoolkit_sdk` cannot be imported, reinstall:
 
 ```bash
-cd ~/g1d_xr/third_party/XRoboToolkit-PC-Service-Pybind
+cd ~/g1d-teleop/third_party/XRoboToolkit-PC-Service-Pybind
 pip install -e .
 ```
 
